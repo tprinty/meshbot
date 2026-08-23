@@ -59,8 +59,12 @@ except ImportError:
 
 import serial.tools.list_ports
 
+from modules.alerts import StormAlerts
 from modules.bbs import BBS
+from modules.noaa_tides import NOAATides
+from modules.repeaters import Repeaters
 from modules.tides import TidesScraper
+from modules.tropics import TropicalWeather, hurricane_season_announcement
 from modules.twin_cipher import TwinHexDecoder, TwinHexEncoder
 from modules.whois import Whois
 from modules.wttr import WeatherFetcher
@@ -89,6 +93,8 @@ class MeshBot:
         self.db = db
         self.weather_info = None
         self.tides_info = None
+        self.alerts_info = None
+        self.tropics_info = None
 
         self.transmission_count = 0
         self.cooldown = False
@@ -127,11 +133,43 @@ class MeshBot:
         self.tides_scraper = TidesScraper(self.tide_location)
         self.bbs = BBS()
 
+        # Optional: NOAA tides (overrides UK tides scraper when configured)
+        noaa_station = settings.get("NOAA_STATION")
+        self.noaa_tides = NOAATides(
+            noaa_station,
+            station_name=settings.get("NOAA_STATION_NAME", noaa_station),
+        ) if noaa_station else None
+
+        # Optional: NWS storm alerts
+        nws_zone = settings.get("NWS_ZONE")
+        self.storm_alerts = StormAlerts(nws_zone) if nws_zone else None
+
+        # Optional: local repeaters via RepeaterBook
+        rep_lat = settings.get("REPEATER_LAT")
+        rep_lon = settings.get("REPEATER_LON")
+        self.repeaters = Repeaters(
+            lat=rep_lat,
+            lon=rep_lon,
+            radius_miles=settings.get("REPEATER_RADIUS", 25),
+            state_id=settings.get("REPEATER_STATE_ID"),
+        ) if (rep_lat and rep_lon) else None
+
+        # Optional: NHC tropical weather
+        self.tropics_enabled = settings.get("TROPICS_ENABLED", False)
+        self.tropical_weather = TropicalWeather() if self.tropics_enabled else None
+
     # Function to periodically refresh weather and tides data
     def refresh_data(self):
         while True:
             self.weather_info = self.weather_fetcher.get_weather()
-            self.tides_info = self.tides_scraper.get_tides()
+            if self.noaa_tides:
+                self.tides_info = self.noaa_tides.get_tides()
+            else:
+                self.tides_info = self.tides_scraper.get_tides()
+            if self.storm_alerts:
+                self.alerts_info = self.storm_alerts.get_alerts()
+            if self.tropical_weather:
+                self.tropics_info = self.tropical_weather.get_tropics()
             time.sleep(3 * 60 * 60)  # Sleep for 3 hours
 
     def _background_resets(self):
@@ -374,10 +412,64 @@ class MeshBot:
             self.transmission_count += 1
             self.kill_all_robots = 0
 
+    def _hurricane_season_announcer(self):
+        """
+        Background thread: on June 1 and November 30 broadcast a season
+        start/end message to the mesh (channel broadcast, not a DM).
+        Checks once per day at startup, then again every 24 hours.
+        """
+        import datetime as _dt
+        announced_today = None
+        while True:
+            today = _dt.date.today()
+            if today != announced_today and self.tropical_weather:
+                msg = hurricane_season_announcement()
+                if msg:
+                    try:
+                        self.interface.sendText(msg, wantAck=False)
+                        logger.info("Hurricane season announcement sent.")
+                    except Exception as e:
+                        logger.error("Failed to send hurricane season announcement: %s", e)
+                    announced_today = today
+            time.sleep(60 * 60)  # check again in 1 hour (catches restarts close to midnight)
+
+    def command_alerts(self, sender_id):
+        logger.info("Alerts Command Received")
+        self.transmission_count += 1
+        if self.storm_alerts is None:
+            self._send("Storm alerts not configured.", sender_id, wantAck=False)
+            return
+        info = self.alerts_info or self.storm_alerts.get_alerts()
+        self._send(info, sender_id, wantAck=False)
+
+    def command_repeaters(self, sender_id):
+        logger.info("Repeaters Command Received")
+        self.transmission_count += 1
+        if self.repeaters is None:
+            self._send("Repeaters not configured.", sender_id, wantAck=False)
+            return
+        self._send(self.repeaters.get_repeaters(), sender_id, wantAck=False)
+
+    def command_tropics(self, sender_id):
+        logger.info("Tropics Command Received")
+        self.transmission_count += 1
+        if self.tropical_weather is None:
+            self._send("Tropical weather not enabled.", sender_id, wantAck=False)
+            return
+        info = self.tropics_info or self.tropical_weather.get_tropics()
+        self._send(info, sender_id, wantAck=False)
+
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
-        self._send("Available commands:\n #help\n #test\n #tst-detail\n #weather\n #tides\n #flipcoin\n #random\n", sender_id, wantAck=False)
+        cmds = ["#help", "#test", "#tst-detail", "#weather", "#tides", "#flipcoin", "#random"]
+        if self.storm_alerts:
+            cmds.append("#alerts")
+        if self.repeaters:
+            cmds.append("#repeaters")
+        if self.tropical_weather:
+            cmds.append("#tropics")
+        self._send("Available commands:\n " + "\n ".join(cmds), sender_id, wantAck=False)
 
     # Function to handle incoming messages
     def message_listener(self, packet, interface):
@@ -414,6 +506,12 @@ class MeshBot:
                 elif "#tides" in message:
                     self.transmission_count += 1
                     interface.sendText(self.tides_info, wantAck=True, destinationId=sender_id)
+                elif "#alerts" in message:
+                    self.command_alerts(sender_id)
+                elif "#repeaters" in message:
+                    self.command_repeaters(sender_id)
+                elif "#tropics" in message:
+                    self.command_tropics(sender_id)
                 elif "#test" in message:
                     self.transmission_count += 1
                     interface.sendText("🟢 ACK", wantAck=True, destinationId=sender_id)
@@ -465,6 +563,12 @@ class MeshBot:
         refresh_thread = threading.Thread(target=self.refresh_data)
         refresh_thread.daemon = True
         refresh_thread.start()
+
+        # Hurricane season start/end announcements (fires on June 1 and Nov 30)
+        if self.tropical_weather:
+            season_thread = threading.Thread(target=self._hurricane_season_announcer)
+            season_thread.daemon = True
+            season_thread.start()
 
         # Keep the main thread alive
         while True:

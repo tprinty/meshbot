@@ -1,4 +1,4 @@
-import defusedxml.ElementTree as ET
+import xml.etree.ElementTree as ET
 from urllib.request import urlopen
 import logging
 
