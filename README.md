@@ -99,6 +99,10 @@ REPEATER_STATE_ID: 1
 
 # NHC tropical weather tracker (Atlantic basin)
 TROPICS_ENABLED: True
+
+# Current conditions via nearest NWS observation station
+WEATHER_LAT: 30.6954
+WEATHER_LON: -88.0399
 ```
 
 ### Settings Reference
@@ -123,6 +127,7 @@ TROPICS_ENABLED: True
 | `REPEATER_RADIUS` | Search radius in miles (default: 25). |
 | `REPEATER_STATE_ID` | RepeaterBook state ID for filtering results. |
 | `TROPICS_ENABLED` | `True`: enable NHC Atlantic tropical weather tracking. |
+| `WEATHER_LAT` / `WEATHER_LON` | Coordinates for the current-conditions lookup. The bot resolves the nearest NWS observation station and reports temperature, heat index, and humidity. |
 
 ## Usage
 
@@ -174,6 +179,7 @@ With `DM_MODE: False`, send commands on channel 0 and everyone will see the resp
 | `#test` | Receive a test acknowledgement |
 | `#tst-detail` | Test with SNR, RSSI, and hop count detail |
 | `#weather` | Local weather report |
+| `#temp` | Current temperature, heat index, and humidity (requires `WEATHER_LAT`/`LON`) |
 | `#tides` | Tide info for the configured location |
 | `#alerts` | Current NWS storm alerts (requires `NWS_ZONE`) |
 | `#repeaters` | Nearby amateur radio repeaters (requires `REPEATER_LAT`/`LON`) |
