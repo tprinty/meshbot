@@ -115,6 +115,7 @@ TROPICS_ENABLED: True
 | `DUTYCYCLE` | `True`: enforce EU 10% duty cycle limit. `False`: disable for regions without duty cycle rules. |
 | `BOT_NAME` | Display name used in welcome messages. Default: `WeMoBot`. |
 | `WELCOME_ENABLED` | `True`: send a channel welcome when a new node is seen for the first time. |
+| `WELCOME_MESSAGE` | Custom welcome message template. Supports `{long_name}`, `{short_name}`, and `{bot_name}` placeholders. |
 | `NOAA_STATION` | NOAA Tides & Currents station ID. When set, overrides the UK tides scraper. Find station IDs at [tidesandcurrents.noaa.gov](https://tidesandcurrents.noaa.gov/). |
 | `NOAA_STATION_NAME` | Human-readable name for the NOAA station shown in responses. |
 | `NWS_ZONE` | NWS zone code for storm alerts (e.g. `ALZ061`). Find yours at [alerts.weather.gov](https://alerts.weather.gov/). |

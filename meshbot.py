@@ -134,6 +134,10 @@ class MeshBot:
         self.dutycycle = settings.get("DUTYCYCLE", True)
         self.bot_name = settings.get("BOT_NAME", "WeMoBot")
         self.welcome_enabled = settings.get("WELCOME_ENABLED", False)
+        self.welcome_message = settings.get(
+            "WELCOME_MESSAGE",
+            "🤖 Welcome {long_name} ({short_name}) to the mesh! - {bot_name}"
+        )
 
         logger.info(f"DUTYCYCLE: {self.dutycycle}")
         logger.info(f"DM_MODE: {self.dm_mode}")
@@ -493,7 +497,9 @@ class MeshBot:
         user = packet.get("decoded", {}).get("user", {})
         long_name = user.get("longName", f"!{node_id:08x}")
         short_name = user.get("shortName", "???")
-        msg = f"🤖 Welcome {long_name} ({short_name}) to the mesh! - {self.bot_name}"
+        msg = self.welcome_message.format(
+            long_name=long_name, short_name=short_name, bot_name=self.bot_name
+        )
         try:
             interface.sendText(msg, wantAck=False)
             logger.info("Welcome sent for node %s", node_id)

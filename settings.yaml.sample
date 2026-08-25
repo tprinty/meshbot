@@ -11,3 +11,4 @@ FIREWALL: True
 DUTYCYCLE: True
 BOT_NAME: "WeMoBot"
 WELCOME_ENABLED: False
+WELCOME_MESSAGE: "🤖 Welcome {long_name} ({short_name}) to the mesh! - {bot_name}"
