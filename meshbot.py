@@ -42,6 +42,7 @@ SOFTWARE.
 import argparse
 import logging
 import secrets
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -312,53 +313,42 @@ class MeshBot:
         logger.info("whois command received")
         message_parts = message.split("#")
         self.transmission_count += 1
-        lookup_complete = False
-        if len(message_parts) > 1:
+        if len(message_parts) < 3:
+            return
+        query = message_parts[2].strip()
+        logger.info(f"Querying whois DB {self.db_filename} for: {query}")
+
+        result = None
+        try:
             whois_search = Whois(self.db_filename)
-            logger.info(
-                f"Querying whois DB {self.db_filename} for: {message_parts[2].strip()}"
-            )
+            # Try the query as a (partial) hex node ID first, then fall back
+            # to a short-name lookup when it is not hex or yields no match.
             try:
-                if (
-                    type(int(message_parts[2].strip(), 16)) == int
-                    or type(int(message_parts[2].strip().upper(), 16)) == int
-                ):
-                    result = whois_search.search_nodes(message_parts[2].strip())
-
-                    if result:
-                        node_id, long_name, short_name = result
-                        whois_data = f"ID:{node_id}\n"
-                        whois_data += f"Long Name: {long_name}\n"
-                        whois_data += f"Short Name: {short_name}"
-                        logger.info(f"Data: {whois_data}")
-                        self._send(f"{whois_data}", sender_id, wantAck=False)
-                    else:
-                        self._send("No matching record found.", sender_id, wantAck=False)
-                        lookup_complete = True
-            except:
-                logger.error("Not a hex string aborting!")
+                int(query, 16)
+                result = whois_search.search_nodes(query)
+            except ValueError:
                 pass
-            if (
-                type(message_parts[2].strip()) == str
-                and lookup_complete == False
-            ):
-                result = whois_search.search_nodes_sn(message_parts[2].strip())
-
-                if result:
-                    node_id, long_name, short_name = result
-                    whois_data = f"ID:{node_id}\n"
-                    whois_data += f"Long Name: {long_name}\n"
-                    whois_data += f"Short Name: {short_name}"
-                    logger.info(f"Data: {whois_data}")
-                    self._send(f"{whois_data}", sender_id, wantAck=False)
-                else:
-                    self._send("No matching record found.", sender_id, wantAck=False)
-            else:
-                self._send("No matching record found.", sender_id, wantAck=False)
-
+            if not result:
+                result = whois_search.search_nodes_sn(query)
             whois_search.close_connection()
+        except sqlite3.Error as e:
+            logger.error(f"Whois database error: {e}")
+            self._send(
+                "Whois lookup failed (database error).",
+                sender_id,
+                wantAck=False,
+            )
+            return
+
+        if result:
+            node_id, long_name, short_name = result
+            whois_data = f"ID:{node_id}\n"
+            whois_data += f"Long Name: {long_name}\n"
+            whois_data += f"Short Name: {short_name}"
+            logger.info(f"Data: {whois_data}")
+            self._send(f"{whois_data}", sender_id, wantAck=False)
         else:
-            pass
+            self._send("No matching record found.", sender_id, wantAck=False)
 
     def command_bbs(self, packet, interface, sender_id):
         logger.info("bbs Command Received")
@@ -554,7 +544,7 @@ class MeshBot:
                 elif "#tst-detail" in message:
                     self.command_tst_detail(packet, interface, sender_id)
                 elif "#whois #" in message:
-                    self.command_whois(packet, interface, sender_id)
+                    self.command_whois(message, interface, sender_id)
                 elif "#bbs" in message:
                     self.command_bbs(packet, interface, sender_id)
                 elif "#kill_all_robots" in message:
