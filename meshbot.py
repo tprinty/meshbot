@@ -183,7 +183,7 @@ class MeshBot:
         self.tropics_enabled = settings.get("TROPICS_ENABLED", False)
         self.tropical_weather = TropicalWeather() if self.tropics_enabled else None
 
-    # Function to periodically refresh weather and tides data
+    # Function to periodically refresh weather, tides, alerts, and tropics
     def refresh_data(self):
         while True:
             self.weather_info = self.weather_fetcher.get_weather()
@@ -195,7 +195,7 @@ class MeshBot:
                 self.alerts_info = self.storm_alerts.get_alerts()
             if self.tropical_weather:
                 self.tropics_info = self.tropical_weather.get_tropics()
-            time.sleep(3 * 60 * 60)  # Sleep for 3 hours
+            time.sleep(60 * 60)  # Refresh hourly
 
     def _background_resets(self):
         """Single background thread handling all periodic resets."""
@@ -482,6 +482,7 @@ class MeshBot:
                 "Current conditions not configured.", sender_id, wantAck=False
             )
             return
+        # Live data on every request — freshest possible observation.
         self._send(
             self.current_conditions.get_current(), sender_id, wantAck=False
         )
