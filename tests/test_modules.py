@@ -248,5 +248,79 @@ class TestHurricaneSeasonAnnouncement(unittest.TestCase):
         self.assertIsNone(msg)
 
 
+# ── WeMoBot welcome ───────────────────────────────────────────────────────────
+
+import logging as _logging
+
+class _FakeBot:
+    """Minimal stub that carries only the welcome-related state and method."""
+    def __init__(self, welcome_enabled=True, bot_name="WeMoBot"):
+        self.seen_nodes = set()
+        self.welcome_enabled = welcome_enabled
+        self.bot_name = bot_name
+
+    def _handle_nodeinfo(self, packet, interface):
+        if not self.welcome_enabled:
+            return
+        node_id = packet.get("from")
+        if node_id is None or node_id in self.seen_nodes:
+            return
+        self.seen_nodes.add(node_id)
+        user = packet.get("decoded", {}).get("user", {})
+        long_name = user.get("longName", f"!{node_id:08x}")
+        short_name = user.get("shortName", "???")
+        msg = f"🤖 Welcome {long_name} ({short_name}) to the mesh! - {self.bot_name}"
+        try:
+            interface.sendText(msg, wantAck=False)
+        except Exception as e:
+            _logging.error("Failed to send welcome: %s", e)
+
+
+class TestWelcome(unittest.TestCase):
+
+    def _make_bot(self, welcome_enabled=True, bot_name="WeMoBot"):
+        return _FakeBot(welcome_enabled=welcome_enabled, bot_name=bot_name)
+
+    def _nodeinfo_packet(self, node_id, long_name="Test Node", short_name="TST"):
+        return {
+            "from": node_id,
+            "decoded": {
+                "portnum": "NODEINFO_APP",
+                "user": {"longName": long_name, "shortName": short_name},
+            },
+        }
+
+    def test_welcome_sent_for_new_node(self):
+        bot = self._make_bot()
+        iface = MagicMock()
+        bot._handle_nodeinfo(self._nodeinfo_packet(0xABCD1234), iface)
+        iface.sendText.assert_called_once()
+        msg = iface.sendText.call_args[0][0]
+        self.assertIn("Test Node", msg)
+        self.assertIn("TST", msg)
+        self.assertIn("WeMoBot", msg)
+
+    def test_no_duplicate_welcome(self):
+        bot = self._make_bot()
+        iface = MagicMock()
+        packet = self._nodeinfo_packet(0xABCD1234)
+        bot._handle_nodeinfo(packet, iface)
+        bot._handle_nodeinfo(packet, iface)  # second call should be ignored
+        self.assertEqual(iface.sendText.call_count, 1)
+
+    def test_welcome_disabled(self):
+        bot = self._make_bot(welcome_enabled=False)
+        iface = MagicMock()
+        bot._handle_nodeinfo(self._nodeinfo_packet(0xABCD1234), iface)
+        iface.sendText.assert_not_called()
+
+    def test_welcome_uses_bot_name(self):
+        bot = self._make_bot(bot_name="TestBot")
+        iface = MagicMock()
+        bot._handle_nodeinfo(self._nodeinfo_packet(0xABCD1234), iface)
+        msg = iface.sendText.call_args[0][0]
+        self.assertIn("TestBot", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

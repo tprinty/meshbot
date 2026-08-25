@@ -9,3 +9,5 @@ DBFILENAME: "./db/nodes.db"
 DM_MODE: True
 FIREWALL: True
 DUTYCYCLE: True
+BOT_NAME: "WeMoBot"
+WELCOME_ENABLED: False

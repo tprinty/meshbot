@@ -80,10 +80,17 @@ def find_serial_ports():
 
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(log_formatter)
+logger.addHandler(_console_handler)
+
+_file_handler = logging.FileHandler("meshbot.log")
+_file_handler.setFormatter(log_formatter)
+logger.addHandler(_file_handler)
 
 class MeshBot:
 
@@ -99,6 +106,7 @@ class MeshBot:
         self.transmission_count = 0
         self.cooldown = False
         self.kill_all_robots = 0  # Assuming you missed defining kill_all_robots
+        self.seen_nodes = set()
 
         self.load_setting()
 
@@ -124,6 +132,8 @@ class MeshBot:
         self.dm_mode = settings.get("DM_MODE", True)
         self.firewall = settings.get("FIREWALL", True)
         self.dutycycle = settings.get("DUTYCYCLE", True)
+        self.bot_name = settings.get("BOT_NAME", "WeMoBot")
+        self.welcome_enabled = settings.get("WELCOME_ENABLED", False)
 
         logger.info(f"DUTYCYCLE: {self.dutycycle}")
         logger.info(f"DM_MODE: {self.dm_mode}")
@@ -200,7 +210,8 @@ class MeshBot:
 
     def _send(self, text, sender_id, wantAck=False):
         try:
-            self.interface.sendText(text, wantAck=wantAck, destinationId=sender_id)
+            dest = sender_id if self.dm_mode else "^all"
+            self.interface.sendText(text, wantAck=wantAck, destinationId=dest)
             self.transmission_count += 1
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
@@ -471,8 +482,30 @@ class MeshBot:
             cmds.append("#tropics")
         self._send("Available commands:\n " + "\n ".join(cmds), sender_id, wantAck=False)
 
+    def _handle_nodeinfo(self, packet, interface):
+        """Send a channel welcome when a node is seen for the first time this session."""
+        if not self.welcome_enabled:
+            return
+        node_id = packet.get("from")
+        if node_id is None or node_id in self.seen_nodes:
+            return
+        self.seen_nodes.add(node_id)
+        user = packet.get("decoded", {}).get("user", {})
+        long_name = user.get("longName", f"!{node_id:08x}")
+        short_name = user.get("shortName", "???")
+        msg = f"🤖 Welcome {long_name} ({short_name}) to the mesh! - {self.bot_name}"
+        try:
+            interface.sendText(msg, wantAck=False)
+            logger.info("Welcome sent for node %s", node_id)
+        except Exception as e:
+            logger.error("Failed to send welcome: %s", e)
+
     # Function to handle incoming messages
     def message_listener(self, packet, interface):
+
+        if packet is not None and "decoded" in packet and \
+                packet["decoded"].get("portnum") == "NODEINFO_APP":
+            self._handle_nodeinfo(packet, interface)
 
         if packet is not None and "decoded" in packet and \
                 packet["decoded"].get("portnum") == "TEXT_MESSAGE_APP":
@@ -501,11 +534,9 @@ class MeshBot:
                 elif "#twin" in message:
                     self.command_twin(message, interface, sender_id)
                 elif "#weather" in message:
-                    self.transmission_count += 1
-                    interface.sendText(self.weather_info, wantAck=True, destinationId=sender_id)
+                    self._send(self.weather_info, sender_id, wantAck=True)
                 elif "#tides" in message:
-                    self.transmission_count += 1
-                    interface.sendText(self.tides_info, wantAck=True, destinationId=sender_id)
+                    self._send(self.tides_info, sender_id, wantAck=True)
                 elif "#alerts" in message:
                     self.command_alerts(sender_id)
                 elif "#repeaters" in message:
@@ -513,8 +544,7 @@ class MeshBot:
                 elif "#tropics" in message:
                     self.command_tropics(sender_id)
                 elif "#test" in message:
-                    self.transmission_count += 1
-                    interface.sendText("🟢 ACK", wantAck=True, destinationId=sender_id)
+                    self._send("🟢 ACK", sender_id, wantAck=True)
                 elif "#tst-detail" in message:
                     self.command_tst_detail(packet, interface, sender_id)
                 elif "#whois #" in message:

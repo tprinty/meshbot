@@ -5,7 +5,7 @@
 MeshBot is an OpenSource Python program designed to run on computers with a connected Meshtastic device, allowing users to send and receive messages efficiently over a mesh network.
 
 Our Mission: 
- - To provied low-bandwidth functionality to a low bandwidth mesh.  This has originated in the EU where we have 1x longfast channel, and 10% duty cycle, so we try hard to make this low bandwidth, efficent, purposeful and helpful.  
+ - To provide low-bandwidth functionality to a low bandwidth mesh.  This has originated in the EU where we have 1x longfast channel, and 10% duty cycle, so we try hard to make this low bandwidth, efficient, purposeful and helpful.  
  - For those outside of the EU, knock yourselves out, its opensource, modify at will. Just please dont be offended if we reject high bandwidth pull-requests, but we have no issues with extending commands.
  - As we are open source and an open community, please publish and share your meshtastic work. 
 
@@ -13,9 +13,15 @@ Our Mission:
 
 - Broadcast messages: Send text broadcasts to all devices on the mesh network.
 - Weather updates: Get real-time weather updates for a specified location.
-- Tides information: Receive tidal information for coastal areas.
-- Whois: Query one of two User databases: mpowered247 or liamcottle
-- Simple BBS: Store and retrieve messages via the bot
+- Tides information: Receive tidal information for coastal areas (UK scraper or NOAA station).
+- NOAA Tides: Pull official tide predictions from any NOAA Tides & Currents station.
+- Storm Alerts: Real-time NWS storm alerts for a configured zone.
+- Repeaters: Query nearby amateur radio repeaters via RepeaterBook.
+- Tropical Weather: NHC Atlantic tropical weather tracking.
+- Whois: Query one of two User databases: mpowered247 or liamcottle.
+- Simple BBS: Store and retrieve messages via the bot.
+- Channel mode: Optionally respond to channel 0 broadcasts so all nodes see replies.
+- Debug logging: All activity written to `meshbot.log` for easy monitoring.
 
 ## Requirements
 
@@ -46,45 +52,78 @@ python3 -m venv .venv
 pip install -r requirements.txt
 ```
 
-4. Connect your Meshtastic device to your computer via USB and run the program
+4. Copy the sample settings file and edit it for your setup:
 
 ```
-python ./meshbot.py
+cp settings.yaml.sample settings.yaml
 ```
 
-## Configuration (NEW)
+5. Connect your Meshtastic device to your computer via USB and run the program:
 
-We have revamped the configuration, there is now a ''settings.yaml'' file, which we believe makes the program easier to manage
+```
+python ./meshbot.py --port /dev/ttyACM0
+```
+
+## Configuration
+
+There is a `settings.yaml` file which makes the program easy to manage. Copy `settings.yaml.sample` as a starting point.
 
 Example Content:
 
-```
+```yaml
 ---
-LOCATION: "Swansea"
-TIDE_LOCATION: "Swansea"
-MYNODE: "3663493700"
+LOCATION: "Mobile, AL"
+TIDE_LOCATION: "Mobile"
+MYNODE: "3661660496"
 MYNODES:
-  - "3663493700"
-  - "1234567890"
+  - "3661660496"
 DBFILENAME: "./db/nodes.db"
-DM_MODE: True
-FIREWALL: True
-DUTYCYCLE: True
+DM_MODE: False
+FIREWALL: False
+DUTYCYCLE: False
+BOT_NAME: "WeMoBot"
+WELCOME_ENABLED: False
+
+# NOAA Tides & Currents station (overrides UK tides scraper when set)
+NOAA_STATION: "8735180"
+NOAA_STATION_NAME: "Dauphin Island"
+
+# NWS storm alert zone code (https://alerts.weather.gov/)
+NWS_ZONE: "ALZ061"
+
+# RepeaterBook — nearby open repeaters
+REPEATER_LAT: 30.6954
+REPEATER_LON: -88.0399
+REPEATER_RADIUS: 25
+REPEATER_STATE_ID: 1
+
+# NHC tropical weather tracker (Atlantic basin)
+TROPICS_ENABLED: True
 ```
 
-Description
+### Settings Reference
 
-- LOCATION and TIDE_LOCATION = These should be obvious
-- MYNODE = The hw address of the node connected in int/number form. This is so the bot only responds to DMs
-- MYNODES = A list of nodes (in int/number form) that are permitted to interact with the bot
-- DBFILENAME = Configure which user database file to use by default
-- DM_MODE = True: Only respond to DMs; False: responds to all traffic
-- FIREWALL = True: Only respond to MYNODES; False: responds to all traffic
-- DUTYCYCLE: True: Respect 10% Dutycycle in EU, false to disable for countries without Dutycycle
+| Setting | Description |
+|---|---|
+| `LOCATION` | City/location used for weather lookups. Falls back to IP geolocation if omitted. |
+| `TIDE_LOCATION` | Location for UK tides scraper. Ignored if `NOAA_STATION` is set. |
+| `MYNODE` | Node number (integer) of the connected radio. Used for DM filtering. |
+| `MYNODES` | List of node numbers allowed to interact with the bot when `FIREWALL: True`. |
+| `DBFILENAME` | Path to the whois SQLite database. |
+| `DM_MODE` | `True`: only respond to direct messages. `False`: respond to channel 0 broadcasts (all nodes see replies). |
+| `FIREWALL` | `True`: only respond to nodes listed in `MYNODES`. `False`: respond to anyone. |
+| `DUTYCYCLE` | `True`: enforce EU 10% duty cycle limit. `False`: disable for regions without duty cycle rules. |
+| `BOT_NAME` | Display name used in welcome messages. Default: `WeMoBot`. |
+| `WELCOME_ENABLED` | `True`: send a channel welcome when a new node is seen for the first time. |
+| `NOAA_STATION` | NOAA Tides & Currents station ID. When set, overrides the UK tides scraper. Find station IDs at [tidesandcurrents.noaa.gov](https://tidesandcurrents.noaa.gov/). |
+| `NOAA_STATION_NAME` | Human-readable name for the NOAA station shown in responses. |
+| `NWS_ZONE` | NWS zone code for storm alerts (e.g. `ALZ061`). Find yours at [alerts.weather.gov](https://alerts.weather.gov/). |
+| `REPEATER_LAT` / `REPEATER_LON` | Coordinates for RepeaterBook nearby repeater search. |
+| `REPEATER_RADIUS` | Search radius in miles (default: 25). |
+| `REPEATER_STATE_ID` | RepeaterBook state ID for filtering results. |
+| `TROPICS_ENABLED` | `True`: enable NHC Atlantic tropical weather tracking. |
 
 ## Usage
-
-Run the MeshBot program:
 
 ```
 python meshbot.py --help
@@ -93,7 +132,7 @@ python meshbot.py --help
 Example on Linux:
 
 ```
-python meshbot.py --port /dev/ttyUSB0
+python meshbot.py --port /dev/ttyACM0
 ```
 
 Example on OSX:
@@ -116,18 +155,34 @@ or
 python meshbot.py --host 192.168.0.100
 ```
 
-## Bot interaction
+## Monitoring
 
-You bot will be accessible through the meshtastic mesh network through the node name. DM the bot/node and issue any of the following commands:
+All bot activity is written to `meshbot.log` in the working directory. Watch it live with:
 
-- #test : receive a test message
-- #tst-detail : as #test above only more detail e.g snr,rssi, hop count (thanks to [rohanki](https://github.com/rohanki))
-- #weather : local weather report
-- #tides : tide info (dont forget to change the default town in the source)
-- #whois #xxxx : retrieve name and node info for a node based on last 4 chars of address
-- #bbs any : do I have any messages?
-- #bbs post !address message : post a message on the bbs for a given user at !address
-- #bbs get : retrieve your message(s) left by another user(s)
+```
+tail -f meshbot.log
+```
+
+## Bot Commands
+
+With `DM_MODE: False`, send commands on channel 0 and everyone will see the response. With `DM_MODE: True`, DM the bot node directly.
+
+| Command | Description |
+|---|---|
+| `#help` | List available commands |
+| `#test` | Receive a test acknowledgement |
+| `#tst-detail` | Test with SNR, RSSI, and hop count detail |
+| `#weather` | Local weather report |
+| `#tides` | Tide info for the configured location |
+| `#alerts` | Current NWS storm alerts (requires `NWS_ZONE`) |
+| `#repeaters` | Nearby amateur radio repeaters (requires `REPEATER_LAT`/`LON`) |
+| `#tropics` | Atlantic tropical weather summary (requires `TROPICS_ENABLED: True`) |
+| `#flipcoin` | Flip a coin |
+| `#random` | Random number 1–10 |
+| `#whois # xxxx` | Look up a node by ID or short name |
+| `#bbs any` | Check if you have BBS messages waiting |
+| `#bbs get` | Retrieve your BBS messages |
+| `#bbs post !address message` | Leave a message for another node |
 
 ## Contributors
 
