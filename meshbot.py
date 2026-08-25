@@ -62,6 +62,7 @@ import serial.tools.list_ports
 
 from modules.alerts import StormAlerts
 from modules.bbs import BBS
+from modules.current import CurrentConditions
 from modules.noaa_tides import NOAATides
 from modules.repeaters import Repeaters
 from modules.tides import TidesScraper
@@ -168,6 +169,15 @@ class MeshBot:
             radius_miles=settings.get("REPEATER_RADIUS", 25),
             state_id=settings.get("REPEATER_STATE_ID"),
         ) if (rep_lat and rep_lon) else None
+
+        # Optional: current conditions via nearest NWS observation station
+        cur_lat = settings.get("WEATHER_LAT")
+        cur_lon = settings.get("WEATHER_LON")
+        self.current_conditions = (
+            CurrentConditions(cur_lat, cur_lon)
+            if (cur_lat and cur_lon)
+            else None
+        )
 
         # Optional: NHC tropical weather
         self.tropics_enabled = settings.get("TROPICS_ENABLED", False)
@@ -464,6 +474,18 @@ class MeshBot:
         info = self.tropics_info or self.tropical_weather.get_tropics()
         self._send(info, sender_id, wantAck=False)
 
+    def command_temp(self, sender_id):
+        logger.info("Temp Command Received")
+        self.transmission_count += 1
+        if self.current_conditions is None:
+            self._send(
+                "Current conditions not configured.", sender_id, wantAck=False
+            )
+            return
+        self._send(
+            self.current_conditions.get_current(), sender_id, wantAck=False
+        )
+
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
@@ -474,6 +496,8 @@ class MeshBot:
             cmds.append("#repeaters")
         if self.tropical_weather:
             cmds.append("#tropics")
+        if self.current_conditions:
+            cmds.append("#temp")
         self._send("Available commands:\n " + "\n ".join(cmds), sender_id, wantAck=False)
 
     def _handle_nodeinfo(self, packet, interface):
@@ -539,6 +563,8 @@ class MeshBot:
                     self.command_repeaters(sender_id)
                 elif "#tropics" in message:
                     self.command_tropics(sender_id)
+                elif "#temp" in message:
+                    self.command_temp(sender_id)
                 elif "#test" in message:
                     self._send("🟢 ACK", sender_id, wantAck=True)
                 elif "#tst-detail" in message:

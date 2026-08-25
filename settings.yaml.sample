@@ -12,3 +12,7 @@ DUTYCYCLE: True
 BOT_NAME: "WeMoBot"
 WELCOME_ENABLED: False
 WELCOME_MESSAGE: "🤖 Welcome {long_name} ({short_name}) to the mesh! - {bot_name}"
+
+# Optional: current conditions via nearest NWS observation station
+# WEATHER_LAT: 30.6954
+# WEATHER_LON: -88.0399
