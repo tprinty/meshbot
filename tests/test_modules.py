@@ -254,16 +254,19 @@ import logging as _logging
 
 class _FakeBot:
     """Minimal stub that carries only the welcome-related state and method."""
-    def __init__(self, welcome_enabled=True, bot_name="WeMoBot"):
+    def __init__(self, welcome_enabled=True, bot_name="WeMoBot", mynode="3661660496"):
         self.seen_nodes = set()
         self.welcome_enabled = welcome_enabled
         self.bot_name = bot_name
+        self.mynode = mynode
 
     def _handle_nodeinfo(self, packet, interface):
         if not self.welcome_enabled:
             return
         node_id = packet.get("from")
         if node_id is None or node_id in self.seen_nodes:
+            return
+        if self.mynode and str(node_id) == str(self.mynode):
             return
         self.seen_nodes.add(node_id)
         user = packet.get("decoded", {}).get("user", {})
@@ -278,8 +281,8 @@ class _FakeBot:
 
 class TestWelcome(unittest.TestCase):
 
-    def _make_bot(self, welcome_enabled=True, bot_name="WeMoBot"):
-        return _FakeBot(welcome_enabled=welcome_enabled, bot_name=bot_name)
+    def _make_bot(self, welcome_enabled=True, bot_name="WeMoBot", mynode="3661660496"):
+        return _FakeBot(welcome_enabled=welcome_enabled, bot_name=bot_name, mynode=mynode)
 
     def _nodeinfo_packet(self, node_id, long_name="Test Node", short_name="TST"):
         return {
@@ -320,6 +323,19 @@ class TestWelcome(unittest.TestCase):
         bot._handle_nodeinfo(self._nodeinfo_packet(0xABCD1234), iface)
         msg = iface.sendText.call_args[0][0]
         self.assertIn("TestBot", msg)
+
+    def test_no_self_welcome(self):
+        bot = self._make_bot(mynode="3661660496")
+        iface = MagicMock()
+        bot._handle_nodeinfo(self._nodeinfo_packet(3661660496), iface)
+        iface.sendText.assert_not_called()
+
+    def test_no_self_welcome_int_node_id(self):
+        # Node id arrives as an int; mynode is a string. Guard must still match.
+        bot = self._make_bot(mynode=3661660496)
+        iface = MagicMock()
+        bot._handle_nodeinfo(self._nodeinfo_packet(3661660496), iface)
+        iface.sendText.assert_not_called()
 
 
 if __name__ == "__main__":

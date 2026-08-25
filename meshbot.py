@@ -507,6 +507,9 @@ class MeshBot:
         node_id = packet.get("from")
         if node_id is None or node_id in self.seen_nodes:
             return
+        # Never greet our own node — the radio hears its own NODEINFO broadcasts.
+        if self.mynode and str(node_id) == str(self.mynode):
+            return
         self.seen_nodes.add(node_id)
         user = packet.get("decoded", {}).get("user", {})
         long_name = user.get("longName", f"!{node_id:08x}")
