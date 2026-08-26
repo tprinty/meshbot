@@ -47,6 +47,7 @@ nosetests.xml
 coverage.xml
 *.cover
 *.log
+meshbot.log.*
 *.egg-info/
 
 # Django stuff:
