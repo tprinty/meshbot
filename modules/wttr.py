@@ -23,23 +23,23 @@ class WeatherFetcher:
                 sunset = weather_info[-1].strip()
 
                 emojis = {
-                    "☁️": ["Cloudy", "Overcast", "cloudy"],
-                    "🌤️": ["Partly", "Partly cloudy"],
-                    "": ["Sunny", "Clear"],
-                    "🌧️": [
-                        "Rain",
-                        "rain",
-                        "Light rain",
-                        "Drizzle",
-                        "Light shower rain",
-                        "Rain shower",
-                    ],
-                    "🌩️": ["Thunderstorm"],
-                    "❄": ["Snow", "Light snow", "Light shower snow"],
-                    "🌨️": ["Snow shower", "Shower snow"],
-                    "🌬️": ["Windy"],
-                    "🌫️": ["Mist", "Fog"],
-                }
+                                    "☁️": ["Cloudy", "Overcast", "cloudy"],
+                                    "🌤️": ["Partly", "Partly cloudy"],
+                                    "☀️": ["Sunny", "Clear"],
+                                    "🌧️": [
+                                        "Rain",
+                                        "rain",
+                                        "Light rain",
+                                        "Drizzle",
+                                        "Light shower rain",
+                                        "Rain shower",
+                                    ],
+                                    "🌩️": ["Thunderstorm"],
+                                    "❄️": ["Snow", "Light snow", "Light shower snow"],
+                                    "🌨️": ["Snow shower", "Shower snow"],
+                                    "🌬️": ["Windy"],
+                                    "🌫️": ["Mist", "Fog"],
+                                }
 
                 selected_emoji = next(
                     (
@@ -55,6 +55,11 @@ class WeatherFetcher:
                 output += f"💨 {wind}\n"
                 output += f"🌞 {dawn}\n"
                 output += f"🌛 {sunset}\n"
+                # Strip any wttr.in private-use Unicode characters
+                # (U+E000–U+F8FF) that Meshtastic screens can't render.
+                output = "".join(
+                    c for c in output if ord(c) < 0xE000 or ord(c) > 0xF8FF
+                )
                 return output
             else:
                 return "Failed to fetch weather data."
