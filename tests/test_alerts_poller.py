@@ -150,19 +150,27 @@ class TestAlertBroadcastFormat(unittest.TestCase):
         self.assertIn("⚠", msg)
         self.assertIn("Severe Thunderstorm Warning", msg)
 
-    def test_format_shows_first_line_of_description(self):
+    def test_format_joins_lines_until_blank_line(self):
+        """Lines up to the first blank line are joined into a paragraph."""
         bot = _make_bot()
         alert = _make_alert(
             description=(
                 "First line of description.\n"
                 "Second line with more detail.\n"
-                "Third line."
+                "Third line wraps.\n"
+                "\n"
+                "HAZARD...60 mph wind gusts.\n"
+                "\n"
+                "IMPACT...Expect damage to roofs."
             ),
         )
         msg = bot._format_alert_broadcast(alert)
         self.assertIn("First line of description", msg)
-        self.assertNotIn("Second line", msg)
-        self.assertNotIn("Third line", msg)
+        self.assertIn("Second line with more detail", msg)
+        self.assertIn("Third line wraps", msg)
+        # HAZARD and IMPACT are behind a blank line — excluded
+        self.assertNotIn("HAZARD", msg)
+        self.assertNotIn("IMPACT", msg)
 
     def test_format_includes_expiration(self):
         bot = _make_bot()
@@ -175,8 +183,7 @@ class TestAlertBroadcastFormat(unittest.TestCase):
         bot = _make_bot()
         alert = _make_alert(description="X" * 300)
         msg = bot._format_alert_broadcast(alert)
-        # The first line should be at most 200 chars + "..."
-        # Since description is one long line, it gets truncated
+        # A single long line with no blank lines gets truncated
         self.assertIn("...", msg)
 
     def test_format_no_description_uses_headline(self):
