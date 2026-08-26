@@ -66,6 +66,7 @@ from modules.bbs import BBS
 from modules.current import CurrentConditions
 from modules.metar import Metar
 from modules.noaa_tides import NOAATides
+from modules.node_tracker import NodeTracker
 from modules.repeaters import Repeaters
 from modules.tides import TidesScraper
 from modules.tropics import TropicalWeather, hurricane_season_announcement
@@ -112,7 +113,6 @@ class MeshBot:
         self.transmission_count = 0
         self.cooldown = False
         self.kill_all_robots = 0  # Assuming you missed defining kill_all_robots
-        self.seen_nodes = set()
         self._reply_dest = None  # set per-message by message_listener
 
         self.load_setting()
@@ -144,6 +144,12 @@ class MeshBot:
         self.welcome_message = settings.get(
             "WELCOME_MESSAGE",
             "🤖 Welcome {long_name} ({short_name}) to the mesh! - {bot_name}"
+        )
+
+        # Persistent last-seen tracking for welcomes (survives restarts).
+        self.node_tracker = NodeTracker(
+            settings.get("WELCOME_DB", "./db/welcome.db"),
+            cooldown_days=settings.get("WELCOME_COOLDOWN_DAYS", 30),
         )
 
         logger.info(f"DUTYCYCLE: {self.dutycycle}")
@@ -531,16 +537,21 @@ class MeshBot:
         self._send("Available commands:\n " + "\n ".join(cmds), sender_id, wantAck=False)
 
     def _handle_nodeinfo(self, packet, interface):
-        """Send a channel welcome when a node is seen for the first time this session."""
+        """Send a channel welcome when a node is new, or returning after a
+        long absence (30 days by default)."""
         if not self.welcome_enabled:
             return
         node_id = packet.get("from")
-        if node_id is None or node_id in self.seen_nodes:
+        if node_id is None:
             return
         # Never greet our own node — the radio hears its own NODEINFO broadcasts.
         if self.mynode and str(node_id) == str(self.mynode):
             return
-        self.seen_nodes.add(node_id)
+        # Persistent last-seen tracking: welcome only on first sighting, or
+        # when the node hasn't been seen for `cooldown_days` (30 by default).
+        # Survives restarts, so a deploy doesn't re-greet the whole mesh.
+        if not self.node_tracker.should_welcome(node_id):
+            return
         user = packet.get("decoded", {}).get("user", {})
         long_name = user.get("longName", f"!{node_id:08x}")
         short_name = user.get("shortName", "???")

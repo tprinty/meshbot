@@ -251,24 +251,32 @@ class TestHurricaneSeasonAnnouncement(unittest.TestCase):
 # ── WeMoBot welcome ───────────────────────────────────────────────────────────
 
 import logging as _logging
+import tempfile
+
+from modules.node_tracker import NodeTracker
+
 
 class _FakeBot:
     """Minimal stub that carries only the welcome-related state and method."""
     def __init__(self, welcome_enabled=True, bot_name="WeMoBot", mynode="3661660496"):
-        self.seen_nodes = set()
         self.welcome_enabled = welcome_enabled
         self.bot_name = bot_name
         self.mynode = mynode
+        # A real NodeTracker on a temp DB, so dedup behaviour is exercised.
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self._tmp.close()
+        self.node_tracker = NodeTracker(self._tmp.name)
 
     def _handle_nodeinfo(self, packet, interface):
         if not self.welcome_enabled:
             return
         node_id = packet.get("from")
-        if node_id is None or node_id in self.seen_nodes:
+        if node_id is None:
             return
         if self.mynode and str(node_id) == str(self.mynode):
             return
-        self.seen_nodes.add(node_id)
+        if not self.node_tracker.should_welcome(node_id):
+            return
         user = packet.get("decoded", {}).get("user", {})
         long_name = user.get("longName", f"!{node_id:08x}")
         short_name = user.get("shortName", "???")
