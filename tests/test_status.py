@@ -45,7 +45,8 @@ class TestStatusCommand(unittest.TestCase):
             3770480103: _node(3770480103, "Tomp", last_heard=now - 120, snr=7.0),
             1578062984: _node(1578062984, "WMR1", last_heard=now - 28800, battery=89),
         }
-        bot.command_status("3770480103")
+        # Production passes an int sender (packet["from"]).
+        bot.command_status(3770480103)
         text = self._send_text(bot)
         self.assertIn("WeMo:", text)
         self.assertIn("WeMoBot", text)
@@ -58,7 +59,7 @@ class TestStatusCommand(unittest.TestCase):
     def test_non_operator_ignored_silently(self):
         bot = _make_bot()
         bot.interface.nodesByNum = {3661660496: _node(3661660496, "WeMoBot")}
-        bot.command_status("4210449849")  # ScrimJim
+        bot.command_status(4210449849)  # ScrimJim (int, as in production)
         bot.interface.sendText.assert_not_called()
 
     def test_reply_is_direct_even_on_broadcast(self):
@@ -68,9 +69,9 @@ class TestStatusCommand(unittest.TestCase):
         bot.interface.nodesByNum = {3770480103: _node(3770480103, "Tomp", last_heard=now)}
         # Simulate the command arriving on a broadcast channel: _reply_dest was ^all.
         bot._reply_dest = "^all"
-        bot.command_status("3770480103")
+        bot.command_status(3770480103)
         dest = bot.interface.sendText.call_args[1]["destinationId"]
-        self.assertEqual(dest, "3770480103")
+        self.assertEqual(dest, 3770480103)  # int, matching production
 
     def test_inert_without_operator_node(self):
         bot = _make_bot(operator_node=None)
