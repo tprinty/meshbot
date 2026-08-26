@@ -19,8 +19,12 @@ WELCOME_MESSAGE: "🤖 Welcome {long_name} ({short_name}) to the mesh! - {bot_na
 # WEATHER_LAT: 30.6954
 # WEATHER_LON: -88.0399
 
-# Optional: METAR observation for an ICAO station (e.g. KMOB Mobile Regional)
-# METAR_STATION: "KMOB"
+# METAR observation (aviation weather, terse format)
+METAR_STATION: "KMOB"
+
+# Daily tropics broadcast during hurricane season (Jun–Nov)
+TROPICS_DAILY_ENABLED: True
+TROPICS_DAILY_TIME: "07:00"   # CT — broadcast ~7am
 
 # Optional: operator-only node status (#status).
 # OPERATOR_NODE is the node number allowed to run #status (your own node).

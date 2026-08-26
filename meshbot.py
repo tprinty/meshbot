@@ -202,6 +202,14 @@ class MeshBot:
         self.tropics_enabled = settings.get("TROPICS_ENABLED", False)
         self.tropical_weather = TropicalWeather() if self.tropics_enabled else None
 
+        # Optional: daily tropics broadcast during hurricane season
+        self.tropics_daily_enabled = settings.get(
+            "TROPICS_DAILY_ENABLED", False
+        )
+        self.tropics_daily_time = settings.get(
+            "TROPICS_DAILY_TIME", "07:00"
+        )
+
         # Optional: METAR observation for an ICAO station
         metar_station = settings.get("METAR_STATION")
         self.metar = Metar(metar_station) if metar_station else None
@@ -476,7 +484,45 @@ class MeshBot:
                     except Exception as e:
                         logger.error("Failed to send hurricane season announcement: %s", e)
                     announced_today = today
-            time.sleep(60 * 60)  # check again in 1 hour (catches restarts close to midnight)
+            time.sleep(60 * 60)  # check again in 1 hour
+
+    def _daily_tropics_broadcaster(self):
+        """Background thread: broadcast a daily tropics summary to channel 0
+        during Atlantic hurricane season (Jun 1 – Nov 30).
+
+        Fires once per day at the time configured in TROPICS_DAILY_TIME
+        (CT, e.g. \"07:00\"). Uses the same NHC data source as #tropics.
+        """
+        import datetime as _dt
+        sent_today = None
+        while True:
+            today = _dt.date.today()
+            if today != sent_today:
+                from modules.tropics import in_hurricane_season
+                if in_hurricane_season():
+                    now_ct = _dt.datetime.now(
+                        _dt.timezone(_dt.timedelta(hours=-5))
+                    )
+                    cur_time = now_ct.strftime("%H:%M")
+                    if cur_time >= self.tropics_daily_time:
+                        info = self.tropics_info
+                        if self.tropical_weather and info:
+                            header = f"🌀 Daily Tropics — {today.strftime('%a %b %-d')}"
+                            msg = f"{header}\n{info}"
+                            try:
+                                self.interface.sendText(
+                                    msg, wantAck=False
+                                )
+                                logger.info(
+                                    "Daily tropics broadcast sent "
+                                    "(%d chars)", len(msg)
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    "Failed daily tropics broadcast: %s", e
+                                )
+                        sent_today = today
+            time.sleep(60 * 15)  # check every 15 min
 
     def command_alerts(self, sender_id):
         logger.info("Alerts Command Received")
@@ -757,11 +803,25 @@ class MeshBot:
         refresh_thread.daemon = True
         refresh_thread.start()
 
-        # Hurricane season start/end announcements (fires on June 1 and Nov 30)
+        # Hurricane season start/end announcements
         if self.tropical_weather:
-            season_thread = threading.Thread(target=self._hurricane_season_announcer)
+            season_thread = threading.Thread(
+                target=self._hurricane_season_announcer
+            )
             season_thread.daemon = True
             season_thread.start()
+            # Daily tropics broadcast during hurricane season
+            if self.tropics_daily_enabled:
+                tropics_daily_thread = threading.Thread(
+                    target=self._daily_tropics_broadcaster
+                )
+                tropics_daily_thread.daemon = True
+                tropics_daily_thread.start()
+                logger.info(
+                    "Daily tropics broadcast enabled "
+                    "(hurricane season only, ~%s CT)",
+                    self.tropics_daily_time,
+                )
 
         # Keep the main thread alive
         while True:
