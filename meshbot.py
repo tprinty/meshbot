@@ -64,6 +64,7 @@ import serial.tools.list_ports
 from modules.alerts import StormAlerts
 from modules.bbs import BBS
 from modules.current import CurrentConditions
+from modules.metar import Metar
 from modules.noaa_tides import NOAATides
 from modules.repeaters import Repeaters
 from modules.tides import TidesScraper
@@ -186,6 +187,10 @@ class MeshBot:
         # Optional: NHC tropical weather
         self.tropics_enabled = settings.get("TROPICS_ENABLED", False)
         self.tropical_weather = TropicalWeather() if self.tropics_enabled else None
+
+        # Optional: METAR observation for an ICAO station
+        metar_station = settings.get("METAR_STATION")
+        self.metar = Metar(metar_station) if metar_station else None
 
     # Function to periodically refresh weather, tides, alerts, and tropics
     def refresh_data(self):
@@ -498,6 +503,17 @@ class MeshBot:
             self.current_conditions.get_current(), sender_id, wantAck=False
         )
 
+    def command_metar(self, sender_id):
+        logger.info("METAR Command Received")
+        self.transmission_count += 1
+        if self.metar is None:
+            self._send(
+                "METAR not configured.", sender_id, wantAck=False
+            )
+            return
+        # Live observation on every request.
+        self._send(self.metar.get_metar(), sender_id, wantAck=False)
+
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
@@ -510,6 +526,8 @@ class MeshBot:
             cmds.append("#tropics")
         if self.current_conditions:
             cmds.append("#temp")
+        if self.metar:
+            cmds.append("#metar")
         self._send("Available commands:\n " + "\n ".join(cmds), sender_id, wantAck=False)
 
     def _handle_nodeinfo(self, packet, interface):
@@ -588,6 +606,8 @@ class MeshBot:
                     self.command_tropics(sender_id)
                 elif "#temp" in message:
                     self.command_temp(sender_id)
+                elif "#metar" in message:
+                    self.command_metar(sender_id)
                 elif "#test" in message:
                     self._send("🟢 ACK", sender_id, wantAck=True)
                 elif "#tst-detail" in message:

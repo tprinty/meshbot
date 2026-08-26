@@ -16,3 +16,6 @@ WELCOME_MESSAGE: "🤖 Welcome {long_name} ({short_name}) to the mesh! - {bot_na
 # Optional: current conditions via nearest NWS observation station
 # WEATHER_LAT: 30.6954
 # WEATHER_LON: -88.0399
+
+# Optional: METAR observation for an ICAO station (e.g. KMOB Mobile Regional)
+# METAR_STATION: "KMOB"

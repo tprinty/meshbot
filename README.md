@@ -18,6 +18,7 @@ Our Mission:
 - Storm Alerts: Real-time NWS storm alerts for a configured zone.
 - Repeaters: Query nearby amateur radio repeaters via RepeaterBook.
 - Tropical Weather: NHC Atlantic tropical weather tracking.
+- METAR: Raw aviation METAR observation for a configured ICAO station.
 - Whois: Query one of two User databases: mpowered247 or liamcottle.
 - Simple BBS: Store and retrieve messages via the bot.
 - Channel mode: Optionally respond to channel 0 broadcasts so all nodes see replies.
@@ -103,6 +104,9 @@ TROPICS_ENABLED: True
 # Current conditions via nearest NWS observation station
 WEATHER_LAT: 30.6954
 WEATHER_LON: -88.0399
+
+# METAR observation (aviation weather, terse format)
+METAR_STATION: "KMOB"
 ```
 
 ### Settings Reference
@@ -128,6 +132,7 @@ WEATHER_LON: -88.0399
 | `REPEATER_STATE_ID` | RepeaterBook state ID for filtering results. |
 | `TROPICS_ENABLED` | `True`: enable NHC Atlantic tropical weather tracking. |
 | `WEATHER_LAT` / `WEATHER_LON` | Coordinates for the current-conditions lookup. The bot resolves the nearest NWS observation station and reports temperature, heat index, and humidity. |
+| `METAR_STATION` | ICAO station code for the `#metar` command (e.g. `KMOB`). Fetches the latest aviation METAR observation. |
 
 ## Usage
 
@@ -184,6 +189,7 @@ Replies go back on the same channel the message arrived on: a direct message to 
 | `#tst-detail` | Test with SNR, RSSI, and hop count detail |
 | `#weather` | Local weather report |
 | `#temp` | Current temperature, heat index, and humidity (requires `WEATHER_LAT`/`LON`) |
+| `#metar` | Raw aviation METAR observation (requires `METAR_STATION`) |
 | `#tides` | Tide info for the configured location |
 | `#alerts` | Current NWS storm alerts (requires `NWS_ZONE`) |
 | `#repeaters` | Nearby amateur radio repeaters (requires `REPEATER_LAT`/`LON`) |
