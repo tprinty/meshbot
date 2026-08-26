@@ -141,6 +141,7 @@ STATUS_NODES:
 | `REPEATER_STATE_ID` | RepeaterBook state ID for filtering results. |
 | `TROPICS_ENABLED` | `True`: enable NHC Atlantic tropical weather tracking. |
 | `TROPICS_DAILY_ENABLED` | `True`: broadcast a daily tropics summary to channel 0 during hurricane season (Jun–Nov). |
+| `FORECAST_DAILY_ENABLED` | `True`: broadcast a daily weather forecast to channel 0 (same data as `#weather`, wttr.in). |
 | `WEATHER_LAT` / `WEATHER_LON` | Coordinates for the current-conditions lookup. The bot resolves the nearest NWS observation station and reports temperature, heat index, and humidity. |
 | `METAR_STATION` | ICAO station code for the `#metar` command (e.g. `KMOB`). Fetches the latest aviation METAR observation. |
 | `OPERATOR_NODE` | Node number allowed to run the operator-only `#status` command. If unset, `#status` is inert. |

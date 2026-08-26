@@ -210,6 +210,15 @@ class MeshBot:
             "TROPICS_DAILY_TIME", "07:00"
         )
 
+        # Optional: daily morning forecast broadcast (uses same wttr.in
+        # forecast as #weather, cached hourly by refresh_data)
+        self.forecast_daily_enabled = settings.get(
+            "FORECAST_DAILY_ENABLED", False
+        )
+        self.forecast_daily_time = settings.get(
+            "FORECAST_DAILY_TIME", "07:00"
+        )
+
         # Optional: METAR observation for an ICAO station
         metar_station = settings.get("METAR_STATION")
         self.metar = Metar(metar_station) if metar_station else None
@@ -547,6 +556,60 @@ class MeshBot:
                         sent_today = today
             time.sleep(60 * 15)  # check every 15 min
 
+    def _daily_forecast_broadcaster(self):
+        """Broadcast a daily weather forecast to channel 0 at the
+        configured time (default 07:00 CT).
+
+        Uses the same wttr.in forecast as #weather, cached hourly by
+        refresh_data. Falls back to a live fetch if the cache is empty.
+        """
+        import datetime as _dt
+        sent_today = None
+        while True:
+            today = _dt.date.today()
+            if today != sent_today:
+                now_ct = _dt.datetime.now(
+                    _dt.timezone(_dt.timedelta(hours=-5))
+                )
+                cur_time = now_ct.strftime("%H:%M")
+                if cur_time >= self.forecast_daily_time:
+                    cfg_h, cfg_m = map(
+                        int, self.forecast_daily_time.split(":")
+                    )
+                    cur_h, cur_m = map(int, cur_time.split(":"))
+                    delta = (cur_h * 60 + cur_m) - (cfg_h * 60 + cfg_m)
+                    if delta < 0:
+                        pass  # before time
+                    elif delta > 15:
+                        sent_today = today  # too late; skip today
+                    else:
+                        info = self.weather_info
+                        if not info:
+                            try:
+                                info = self.weather_fetcher.get_weather()
+                            except Exception:
+                                info = ""
+                        if info:
+                            header = (
+                                f"🌅 West Mobile — "
+                                f"{today.strftime('%a %b %-d')}"
+                            )
+                            msg = f"{header}\n{info.strip()}"
+                            try:
+                                self.interface.sendText(
+                                    msg, wantAck=False
+                                )
+                                logger.info(
+                                    "Daily forecast broadcast sent"
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    "Failed daily forecast "
+                                    "broadcast: %s", e
+                                )
+                        sent_today = today
+            time.sleep(60 * 15)  # check every 15 min
+
     def command_alerts(self, sender_id):
         logger.info("Alerts Command Received")
         self.transmission_count += 1
@@ -845,6 +908,18 @@ class MeshBot:
                     "(hurricane season only, ~%s CT)",
                     self.tropics_daily_time,
                 )
+
+        # Daily morning forecast broadcast
+        if self.forecast_daily_enabled:
+            forecast_thread = threading.Thread(
+                target=self._daily_forecast_broadcaster
+            )
+            forecast_thread.daemon = True
+            forecast_thread.start()
+            logger.info(
+                "Daily forecast broadcast enabled (~%s CT)",
+                self.forecast_daily_time,
+            )
 
         # Keep the main thread alive
         while True:
