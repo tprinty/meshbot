@@ -41,6 +41,7 @@ SOFTWARE.
 
 import argparse
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import secrets
 import sqlite3
 import threading
@@ -90,7 +91,9 @@ _console_handler = logging.StreamHandler()
 _console_handler.setFormatter(log_formatter)
 logger.addHandler(_console_handler)
 
-_file_handler = logging.FileHandler("meshbot.log")
+_file_handler = TimedRotatingFileHandler(
+    "meshbot.log", when="midnight", backupCount=7, encoding="utf-8"
+)
 _file_handler.setFormatter(log_formatter)
 logger.addHandler(_file_handler)
 
@@ -109,6 +112,7 @@ class MeshBot:
         self.cooldown = False
         self.kill_all_robots = 0  # Assuming you missed defining kill_all_robots
         self.seen_nodes = set()
+        self._reply_dest = None  # set per-message by message_listener
 
         self.load_setting()
 
@@ -225,7 +229,14 @@ class MeshBot:
 
     def _send(self, text, sender_id, wantAck=False):
         try:
-            dest = sender_id if self.dm_mode else "^all"
+            # Reply on the same channel the message arrived on. A direct
+            # message gets a direct reply; a channel broadcast gets a
+            # broadcast. Fall back to the configured DM_MODE when no per-message
+            # destination is set (e.g. scheduler-driven sends).
+            if self._reply_dest is not None:
+                dest = self._reply_dest
+            else:
+                dest = sender_id if self.dm_mode else "^all"
             self.interface.sendText(text, wantAck=wantAck, destinationId=dest)
             self.transmission_count += 1
         except Exception as e:
@@ -539,6 +550,14 @@ class MeshBot:
                 return
             message = message.lower()
             sender_id = packet["from"]
+            # Determine reply channel from the incoming packet. A message
+            # addressed to the broadcast address (4294967295 / ^all) is a
+            # channel broadcast; anything else (a direct message to this node)
+            # gets a private reply back to the sender.
+            if packet.get("to") == 4294967295:
+                self._reply_dest = "^all"
+            else:
+                self._reply_dest = sender_id
             logger.info(f"Message {packet['decoded']['text']} from {packet['from']}")
             logger.info(f"transmission count {self.transmission_count}")
             

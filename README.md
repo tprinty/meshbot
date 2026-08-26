@@ -169,9 +169,13 @@ All bot activity is written to `meshbot.log` in the working directory. Watch it 
 tail -f meshbot.log
 ```
 
+Logs rotate at midnight and are retained for 7 days (older files are deleted automatically).
+
 ## Bot Commands
 
 With `DM_MODE: False`, send commands on channel 0 and everyone will see the response. With `DM_MODE: True`, DM the bot node directly.
+
+Replies go back on the same channel the message arrived on: a direct message to the bot gets a private reply, and a channel broadcast gets a broadcast reply.
 
 | Command | Description |
 |---|---|
