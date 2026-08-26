@@ -31,10 +31,10 @@ FORECAST_DAILY_ENABLED: True
 FORECAST_DAILY_TIME: "07:00"   # CT
 
 # NWS storm alert polling — broadcasts new alerts as they appear.
-# Requires NWS_ZONE set (e.g. ALZ061 for Upper Mobile County, AL).
+# Requires NWS_ZONE set (e.g. ALC097 for Mobile County, AL).
 # Polls api.weather.gov every ALERTS_POLL_INTERVAL seconds.
 # First poll seeds \"already seen\" to avoid spam on restart.
-# NWS_ZONE: \"ALZ061\"
+# NWS_ZONE: \"ALC097\"
 ALERTS_POLL_ENABLED: False
 # ALERTS_POLL_INTERVAL: 300
 
