@@ -685,6 +685,24 @@ class MeshBot:
 
             time.sleep(self.alerts_poll_interval)
 
+    def _extract_alert_description(self, desc, max_chars=200):
+        """Extract the first paragraph of a NWS alert description.
+
+        NWS descriptions are multi-line with blank-line section breaks.
+        Take all lines up to the first blank line, join with spaces,
+        and truncate at a word boundary if too long.
+        """
+        lines = []
+        for line in desc.strip().split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                break
+            lines.append(stripped)
+        body = " ".join(lines)
+        if len(body) > max_chars:
+            body = body[:max_chars].rsplit(" ", 1)[0] + "..."
+        return body
+
     def _format_alert_broadcast(self, alert):
         """Format a single NWS alert for Meshtastic broadcast.
 
@@ -692,28 +710,17 @@ class MeshBot:
         """
         import datetime as _dt
         parts = [f"⚠ NWS: {alert['event']}"]
-        headline = alert.get("headline", "")
-        if headline:
-            # Remove redundant prefix (\"Severe Thunderstorm Warning
-            # issued...\") and use the description instead
-            desc = alert.get("description", "")
-            if desc:
-                # Take first sentence or line of description
-                first_line = desc.split("\n")[0].strip()
-                if len(first_line) > 200:
-                    first_line = first_line[:197] + "..."
-                parts.append(first_line)
-            else:
+        desc = alert.get("description", "")
+        if desc:
+            body = self._extract_alert_description(desc)
+            if body:
+                parts.append(body)
+        else:
+            headline = alert.get("headline", "")
+            if headline:
                 if len(headline) > 200:
                     headline = headline[:197] + "..."
                 parts.append(headline)
-        else:
-            desc = alert.get("description", "")
-            if desc:
-                first_line = desc.split("\n")[0].strip()
-                if len(first_line) > 200:
-                    first_line = first_line[:197] + "..."
-                parts.append(first_line)
 
         # Append expiration
         expires = alert.get("expires", "")
