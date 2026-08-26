@@ -26,6 +26,10 @@ METAR_STATION: "KMOB"
 TROPICS_DAILY_ENABLED: True
 TROPICS_DAILY_TIME: "07:00"   # CT — broadcast ~7am
 
+# Daily morning forecast broadcast (same data source as #weather)
+FORECAST_DAILY_ENABLED: True
+FORECAST_DAILY_TIME: "07:00"   # CT
+
 # Optional: operator-only node status (#status).
 # OPERATOR_NODE is the node number allowed to run #status (your own node).
 # STATUS_NODES is the list of node numbers the operator monitors.
