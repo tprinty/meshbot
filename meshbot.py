@@ -219,6 +219,14 @@ class MeshBot:
             "FORECAST_DAILY_TIME", "07:00"
         )
 
+        # Optional: NWS storm alert polling — broadcasts new alerts
+        self.alerts_poll_enabled = settings.get(
+            "ALERTS_POLL_ENABLED", False
+        )
+        self.alerts_poll_interval = settings.get(
+            "ALERTS_POLL_INTERVAL", 300
+        )
+
         # Optional: METAR observation for an ICAO station
         metar_station = settings.get("METAR_STATION")
         self.metar = Metar(metar_station) if metar_station else None
@@ -610,6 +618,114 @@ class MeshBot:
                         sent_today = today
             time.sleep(60 * 15)  # check every 15 min
 
+    def _alerts_poller(self):
+        """Background thread: poll NWS for new storm alerts for the
+        configured zone and broadcast them as they appear.
+
+        First poll seeds the \"already seen\" set so we don't spam
+        on restart.  Each subsequent poll broadcasts only alert IDs
+        that have not been seen before.
+        """
+        import datetime as _dt
+        self._sent_alert_ids = set()
+        first_run = True
+
+        while True:
+            try:
+                if self.storm_alerts is None:
+                    time.sleep(self.alerts_poll_interval)
+                    continue
+
+                structured = self.storm_alerts.get_alerts_structured()
+                if structured is None:
+                    # API failure — sleep and retry
+                    logger.warning(
+                        "Alert poller: NWS API returned error; "
+                        "will retry"
+                    )
+                    time.sleep(self.alerts_poll_interval)
+                    continue
+
+                active_ids = {a["id"] for a in structured}
+
+                if first_run:
+                    # Seed with everything currently active
+                    self._sent_alert_ids = active_ids
+                    first_run = False
+                    logger.info(
+                        "Alert poller: seeded %d active alert(s)",
+                        len(active_ids),
+                    )
+                else:
+                    # Broadcast anything new
+                    for a in structured:
+                        if a["id"] not in self._sent_alert_ids:
+                            self._sent_alert_ids.add(a["id"])
+                            msg = self._format_alert_broadcast(a)
+                            if msg:
+                                try:
+                                    self.interface.sendText(
+                                        msg, wantAck=False,
+                                    )
+                                    logger.info(
+                                        "Alert broadcast: %s", a["event"]
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        "Failed alert broadcast: %s", e
+                                    )
+
+                    # Clean up stale IDs (alerts that expired)
+                    self._sent_alert_ids = (
+                        self._sent_alert_ids & active_ids
+                    )
+
+            except Exception as e:
+                logger.error("Alert poller loop error: %s", e)
+
+            time.sleep(self.alerts_poll_interval)
+
+    def _format_alert_broadcast(self, alert):
+        """Format a single NWS alert for Meshtastic broadcast.
+
+        Kept compact for radio — Meshtastic has a ~237-byte packet limit.
+        """
+        import datetime as _dt
+        parts = [f"⚠ NWS: {alert['event']}"]
+        headline = alert.get("headline", "")
+        if headline:
+            # Remove redundant prefix (\"Severe Thunderstorm Warning
+            # issued...\") and use the description instead
+            desc = alert.get("description", "")
+            if desc:
+                # Take first sentence or line of description
+                first_line = desc.split("\n")[0].strip()
+                if len(first_line) > 200:
+                    first_line = first_line[:197] + "..."
+                parts.append(first_line)
+            else:
+                if len(headline) > 200:
+                    headline = headline[:197] + "..."
+                parts.append(headline)
+        else:
+            desc = alert.get("description", "")
+            if desc:
+                first_line = desc.split("\n")[0].strip()
+                if len(first_line) > 200:
+                    first_line = first_line[:197] + "..."
+                parts.append(first_line)
+
+        # Append expiration
+        expires = alert.get("expires", "")
+        if expires:
+            try:
+                expire_dt = _dt.datetime.fromisoformat(expires)
+                parts.append(f"Exp. {expire_dt.strftime('%a %-I:%M %p')}")
+            except Exception:
+                pass
+
+        return "\n".join(parts)
+
     def command_alerts(self, sender_id):
         logger.info("Alerts Command Received")
         self.transmission_count += 1
@@ -919,6 +1035,18 @@ class MeshBot:
             logger.info(
                 "Daily forecast broadcast enabled (~%s CT)",
                 self.forecast_daily_time,
+            )
+
+        # NWS storm-alert polling
+        if self.alerts_poll_enabled and self.storm_alerts:
+            alerts_thread = threading.Thread(
+                target=self._alerts_poller
+            )
+            alerts_thread.daemon = True
+            alerts_thread.start()
+            logger.info(
+                "Alert polling enabled (every %ds)",
+                self.alerts_poll_interval,
             )
 
         # Keep the main thread alive
