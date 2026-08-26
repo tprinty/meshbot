@@ -505,6 +505,29 @@ class MeshBot:
                     )
                     cur_time = now_ct.strftime("%H:%M")
                     if cur_time >= self.tropics_daily_time:
+                        # Only fire within a ~15-minute window of the
+                        # configured time (avoids spurious broadcast on
+                        # restart 8h late). Restarts within the window
+                        # still fire (catches edge-case reboots).
+                        cfg_h, cfg_m = map(
+                            int, self.tropics_daily_time.split(":")
+                        )
+                        cur_h, cur_m = map(int, cur_time.split(":"))
+                        cfg_mins = cfg_h * 60 + cfg_m
+                        cur_mins = cur_h * 60 + cur_m
+                        delta = cur_mins - cfg_mins
+                        if delta < 0 or delta > 15:
+                            # Too far from the configured time; skip
+                            # today (don't count as "sent" — the real
+                            # broadcast missed its slot and will catch
+                            # it tomorrow).
+                            if delta < 0:
+                                time.sleep(60 * 15)
+                                continue
+                            if delta > 15:
+                                sent_today = today
+                                time.sleep(60 * 15)
+                                continue
                         info = self.tropics_info
                         if self.tropical_weather and info:
                             header = f"🌀 Daily Tropics — {today.strftime('%a %b %-d')}"
