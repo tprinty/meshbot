@@ -136,6 +136,14 @@ class MeshBot:
         self.mynode = settings.get("MYNODE")
         self.mynodes = settings.get("MYNODES", None)
         self.db_filename = settings.get("DBFILENAME")
+        # Operator gating for owner-only commands (#status). OPERATOR_NODE is
+        # the operator's node number; STATUS_NODES is the list of node numbers
+        # the operator monitors. Both are optional — #status is inert unless
+        # OPERATOR_NODE is set.
+        self.operator_node = settings.get("OPERATOR_NODE")
+        self.status_nodes = [
+            str(n) for n in (settings.get("STATUS_NODES") or [])
+        ]
         self.dm_mode = settings.get("DM_MODE", True)
         self.firewall = settings.get("FIREWALL", True)
         self.dutycycle = settings.get("DUTYCYCLE", True)
@@ -520,6 +528,80 @@ class MeshBot:
         # Live observation on every request.
         self._send(self.metar.get_metar(), sender_id, wantAck=False)
 
+    @staticmethod
+    def _fmt_age(seconds):
+        """Humanize a seconds-since-heard value for a compact mesh report."""
+        if seconds is None or seconds < 0:
+            return "?"
+        if seconds < 60:
+            return f"{int(seconds)}s ago"
+        if seconds < 3600:
+            return f"{int(seconds // 60)}m ago"
+        if seconds < 86400:
+            return f"{int(seconds // 3600)}h " \
+                   f"{int((seconds % 3600) // 60)}m ago"
+        return f"{int(seconds // 86400)}d ago"
+
+    def command_status(self, sender_id):
+        """Operator-only mesh status: report the monitored nodes' health.
+
+        Silently ignores anyone except OPERATOR_NODE, and always replies
+        directly to the operator (never broadcasts) — this leaks per-node
+        battery/SNR data to the whole mesh otherwise.
+        """
+        if self.operator_node is None:
+            return
+        if str(sender_id) != str(self.operator_node):
+            logger.info("Ignoring #status from non-operator %s", sender_id)
+            return
+
+        logger.info("Status Command Received")
+        self.transmission_count += 1
+        # Force a direct reply to the operator, regardless of the channel the
+        # command arrived on. Overrides the per-message reply dest.
+        self._reply_dest = sender_id
+
+        nodes = getattr(self.interface, "nodesByNum", None) or {}
+        now = int(time.time())
+
+        if not self.status_nodes:
+            self._send(
+                "No monitored nodes configured.", sender_id, wantAck=False
+            )
+            return
+
+        lines = []
+        online = 0
+        for num_str in self.status_nodes:
+            num = int(num_str)
+            node = nodes.get(num)
+            if node is None:
+                lines.append(f"- {num_str}: not seen")
+                continue
+            user = node.get("user") or {}
+            name = (
+                user.get("shortName")
+                or user.get("longName")
+                or str(num_str)
+            )
+            last_heard = node.get("lastHeard")
+            age = self._fmt_age(now - last_heard if last_heard else None)
+            # Consider a node "online" if heard within the last 24h.
+            if last_heard and (now - last_heard) < 86400:
+                online += 1
+            parts = [f"{name} — {age}"]
+            snr = node.get("snr")
+            if snr is not None:
+                parts.append(f"SNR {snr}")
+            batt = (node.get("deviceMetrics") or {}).get("batteryLevel")
+            if batt is not None:
+                parts.append(f"{batt}% batt")
+            lines.append("  ".join(parts))
+
+        total = len(self.status_nodes)
+        header = f"🕸️ WeMo: {online}/{total} monitored online"
+        self._send("\n".join([header] + lines), sender_id, wantAck=False)
+
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
@@ -534,6 +616,9 @@ class MeshBot:
             cmds.append("#temp")
         if self.metar:
             cmds.append("#metar")
+        # #status is operator-only; only advertise it to the operator.
+        if self.operator_node and str(sender_id) == str(self.operator_node):
+            cmds.append("#status")
         self._send("Available commands:\n " + "\n ".join(cmds), sender_id, wantAck=False)
 
     def _handle_nodeinfo(self, packet, interface):
@@ -619,6 +704,8 @@ class MeshBot:
                     self.command_temp(sender_id)
                 elif "#metar" in message:
                     self.command_metar(sender_id)
+                elif "#status" in message:
+                    self.command_status(sender_id)
                 elif "#test" in message:
                     self._send("🟢 ACK", sender_id, wantAck=True)
                 elif "#tst-detail" in message:

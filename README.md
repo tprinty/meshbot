@@ -107,6 +107,13 @@ WEATHER_LON: -88.0399
 
 # METAR observation (aviation weather, terse format)
 METAR_STATION: "KMOB"
+
+# Operator-only node status (#status) — replies only to OPERATOR_NODE.
+OPERATOR_NODE: "3770480103"
+STATUS_NODES:
+  - "3661660496"   # WeMoBot
+  - "3770480103"   # Tomp (operator)
+  - "1578062984"   # WeMo Reapeater 1 (solar router)
 ```
 
 ### Settings Reference
@@ -135,6 +142,8 @@ METAR_STATION: "KMOB"
 | `TROPICS_ENABLED` | `True`: enable NHC Atlantic tropical weather tracking. |
 | `WEATHER_LAT` / `WEATHER_LON` | Coordinates for the current-conditions lookup. The bot resolves the nearest NWS observation station and reports temperature, heat index, and humidity. |
 | `METAR_STATION` | ICAO station code for the `#metar` command (e.g. `KMOB`). Fetches the latest aviation METAR observation. |
+| `OPERATOR_NODE` | Node number allowed to run the operator-only `#status` command. If unset, `#status` is inert. |
+| `STATUS_NODES` | List of node numbers the operator monitors via `#status`. Only these nodes are reported. |
 
 ## Usage
 
@@ -192,6 +201,7 @@ Replies go back on the same channel the message arrived on: a direct message to 
 | `#weather` | Local weather report |
 | `#temp` | Current temperature, heat index, and humidity (requires `WEATHER_LAT`/`LON`) |
 | `#metar` | Raw aviation METAR observation (requires `METAR_STATION`) |
+| `#status` | Operator-only node health report (requires `OPERATOR_NODE` + `STATUS_NODES`). Reports last-heard, SNR, and battery for each monitored node — always replies privately to the operator, never broadcasts. |
 | `#tides` | Tide info for the configured location |
 | `#alerts` | Current NWS storm alerts (requires `NWS_ZONE`) |
 | `#repeaters` | Nearby amateur radio repeaters (requires `REPEATER_LAT`/`LON`) |
