@@ -1,0 +1,5 @@
+# Development and test dependencies for WeMoBot.
+# Install alongside runtime deps:  pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.1.1
+pycodestyle>=2.11.1
