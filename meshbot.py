@@ -65,6 +65,7 @@ from modules.alerts import StormAlerts
 from modules.bbs import BBS
 from modules.current import CurrentConditions
 from modules.metar import Metar
+from modules.moon import Moon
 from modules.noaa_tides import NOAATides
 from modules.node_tracker import NodeTracker
 from modules.repeaters import Repeaters
@@ -230,6 +231,9 @@ class MeshBot:
         # Optional: METAR observation for an ICAO station
         metar_station = settings.get("METAR_STATION")
         self.metar = Metar(metar_station) if metar_station else None
+
+        # Moon phase — always available (pure local computation, no API).
+        self.moon = Moon()
 
     # Function to periodically refresh weather, tides, alerts, and tropics
     def refresh_data(self):
@@ -783,6 +787,12 @@ class MeshBot:
         # Live observation on every request.
         self._send(self.metar.get_metar(), sender_id, wantAck=False)
 
+    def command_moon(self, sender_id):
+        logger.info("Moon Command Received")
+        self.transmission_count += 1
+        # Pure local computation — always available, no config, no network.
+        self._send(self.moon.get_moon(), sender_id, wantAck=False)
+
     @staticmethod
     def _fmt_age(seconds):
         """Humanize a seconds-since-heard value for a compact mesh report."""
@@ -860,7 +870,7 @@ class MeshBot:
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
-        cmds = ["#help", "#test", "#tst-detail", "#weather", "#tides", "#flipcoin", "#random"]
+        cmds = ["#help", "#test", "#tst-detail", "#weather", "#tides", "#flipcoin", "#random", "#moon"]
         if self.storm_alerts:
             cmds.append("#alerts")
         if self.repeaters:
@@ -959,6 +969,8 @@ class MeshBot:
                     self.command_temp(sender_id)
                 elif "#metar" in message:
                     self.command_metar(sender_id)
+                elif "#moon" in message:
+                    self.command_moon(sender_id)
                 elif "#status" in message:
                     self.command_status(sender_id)
                 elif "#test" in message:
