@@ -47,10 +47,18 @@ python3 -m venv .venv
 . .venv/bin/activate
 ```
 
-3. Install the required dependencies:
+3. Install the required dependencies (add `requirements-dev.txt` to also run tests/lint):
 
 ```
 pip install -r requirements.txt
+# optional, for development:
+pip install -r requirements-dev.txt
+```
+
+Run the test suite:
+
+```
+pytest
 ```
 
 4. Copy the sample settings file and edit it for your setup:
