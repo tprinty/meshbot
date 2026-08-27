@@ -100,6 +100,21 @@ _file_handler = TimedRotatingFileHandler(
 _file_handler.setFormatter(log_formatter)
 logger.addHandler(_file_handler)
 
+
+def _central_now():
+    """Current time in Central time (fixed UTC-5 offset).
+
+    The daily broadcasters derive BOTH ``today`` and the time-of-day from
+    this single value so the date and the schedule always agree. Using the
+    host's UTC clock (``datetime.date.today()``) for the ``sent_today``
+    guard while comparing Central wall-clock time caused a restart between
+    00:00-05:00 UTC to mark Central's *tomorrow* as already-sent, silently
+    skipping the next morning's broadcast.
+    """
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-5)))
+
+
 class MeshBot:
 
     def __init__(self, ip_host = None, serial_port = None, db = None):
@@ -514,16 +529,13 @@ class MeshBot:
         Fires once per day at the time configured in TROPICS_DAILY_TIME
         (CT, e.g. \"07:00\"). Uses the same NHC data source as #tropics.
         """
-        import datetime as _dt
         sent_today = None
         while True:
-            today = _dt.date.today()
+            now_ct = _central_now()
+            today = now_ct.date()
             if today != sent_today:
                 from modules.tropics import in_hurricane_season
                 if in_hurricane_season():
-                    now_ct = _dt.datetime.now(
-                        _dt.timezone(_dt.timedelta(hours=-5))
-                    )
                     cur_time = now_ct.strftime("%H:%M")
                     if cur_time >= self.tropics_daily_time:
                         # Only fire within a ~15-minute window of the
@@ -575,14 +587,11 @@ class MeshBot:
         Uses the same wttr.in forecast as #weather, cached hourly by
         refresh_data. Falls back to a live fetch if the cache is empty.
         """
-        import datetime as _dt
         sent_today = None
         while True:
-            today = _dt.date.today()
+            now_ct = _central_now()
+            today = now_ct.date()
             if today != sent_today:
-                now_ct = _dt.datetime.now(
-                    _dt.timezone(_dt.timedelta(hours=-5))
-                )
                 cur_time = now_ct.strftime("%H:%M")
                 if cur_time >= self.forecast_daily_time:
                     cfg_h, cfg_m = map(
