@@ -102,7 +102,7 @@ logger.addHandler(_file_handler)
 
 
 def _central_now():
-    """Current time in Central time (fixed UTC-5 offset).
+    """Current time in Central time (America/Chicago, DST-aware).
 
     The daily broadcasters derive BOTH ``today`` and the time-of-day from
     this single value so the date and the schedule always agree. Using the
@@ -112,7 +112,8 @@ def _central_now():
     skipping the next morning's broadcast.
     """
     import datetime as _dt
-    return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-5)))
+    from zoneinfo import ZoneInfo
+    return _dt.datetime.now(ZoneInfo("America/Chicago"))
 
 
 class MeshBot:
@@ -507,10 +508,9 @@ class MeshBot:
         start/end message to the mesh (channel broadcast, not a DM).
         Checks once per day at startup, then again every 24 hours.
         """
-        import datetime as _dt
         announced_today = None
         while True:
-            today = _dt.date.today()
+            today = _central_now().date()
             if today != announced_today and self.tropical_weather:
                 msg = hurricane_season_announcement()
                 if msg:

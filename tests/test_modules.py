@@ -218,8 +218,8 @@ class TestHurricaneSeasonAnnouncement(unittest.TestCase):
 
     def test_june_1_start(self):
         from modules.tropics import hurricane_season_announcement
-        with patch("modules.tropics.date") as mock_date:
-            mock_date.today.return_value = date(2026, 6, 1)
+        with patch("modules.tropics._central_today",
+                   return_value=date(2026, 6, 1)):
             msg = hurricane_season_announcement()
         self.assertIsNotNone(msg)
         self.assertIn("2026", msg)
@@ -227,23 +227,23 @@ class TestHurricaneSeasonAnnouncement(unittest.TestCase):
 
     def test_november_30_end(self):
         from modules.tropics import hurricane_season_announcement
-        with patch("modules.tropics.date") as mock_date:
-            mock_date.today.return_value = date(2026, 11, 30)
+        with patch("modules.tropics._central_today",
+                   return_value=date(2026, 11, 30)):
             msg = hurricane_season_announcement()
         self.assertIsNotNone(msg)
         self.assertIn("ends", msg)
 
     def test_mid_season_no_announcement(self):
         from modules.tropics import hurricane_season_announcement
-        with patch("modules.tropics.date") as mock_date:
-            mock_date.today.return_value = date(2026, 8, 15)
+        with patch("modules.tropics._central_today",
+                   return_value=date(2026, 8, 15)):
             msg = hurricane_season_announcement()
         self.assertIsNone(msg)
 
     def test_off_season_no_announcement(self):
         from modules.tropics import hurricane_season_announcement
-        with patch("modules.tropics.date") as mock_date:
-            mock_date.today.return_value = date(2026, 1, 15)
+        with patch("modules.tropics._central_today",
+                   return_value=date(2026, 1, 15)):
             msg = hurricane_season_announcement()
         self.assertIsNone(msg)
 
