@@ -187,3 +187,33 @@ class TestDailyTropicsTimezoneRegression(unittest.TestCase):
             ])
 
         bot.interface.sendText.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# DST-safety of the Central-time helpers
+# ---------------------------------------------------------------------------
+
+class TestCentralTimeHelpers(unittest.TestCase):
+    """_central_now() and tropics._central_today() must be DST-aware
+    (America/Chicago), not a hardcoded UTC-5 offset that drifts an hour
+    when the US falls back to CST (UTC-6) in November."""
+
+    def test_central_now_uses_chicago_zone(self):
+        import meshbot
+        now = meshbot._central_now()
+        self.assertEqual(str(now.tzinfo), "America/Chicago")
+
+    def test_central_now_is_not_fixed_offset(self):
+        """A fixed UTC-5 offset reports 'UTC-05:00'; the ZoneInfo object
+        must carry the named zone key, proving it handles DST transitions."""
+        import meshbot
+        now = meshbot._central_now()
+        self.assertIsNotNone(now.tzinfo)
+        self.assertNotEqual(str(now.tzinfo), "UTC-05:00")
+
+    def test_tropics_central_today_is_chicago_zone(self):
+        from modules.tropics import _central_today, _CENTRAL
+        self.assertEqual(str(_CENTRAL), "America/Chicago")
+        # _central_today must agree with meshbot._central_now's date.
+        import meshbot
+        self.assertEqual(_central_today(), meshbot._central_now().date())

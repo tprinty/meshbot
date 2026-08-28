@@ -1,9 +1,22 @@
 import requests
 import logging
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+# Meshtastic bot reports local time in Central (America/Chicago, DST-aware).
+# Season boundaries (Jun 1 / Nov 30) must be judged against Central time,
+# not the host's UTC clock, or the announcement fires ~5h early on the prior
+# evening.
+_CENTRAL = ZoneInfo("America/Chicago")
+
+
+def _central_today():
+    """Today's date in Central time (America/Chicago)."""
+    return datetime.now(_CENTRAL).date()
+
 
 NHC_RSS_URL = "https://www.nhc.noaa.gov/index-at.xml"
 
@@ -17,7 +30,7 @@ def hurricane_season_announcement():
     Return an announcement string on season-start (June 1) or season-end
     (November 30), otherwise return None.
     """
-    today = date.today()
+    today = _central_today()
     mm_dd = (today.month, today.day)
     year  = today.year
     if mm_dd == SEASON_START:
@@ -35,7 +48,7 @@ def hurricane_season_announcement():
 
 def in_hurricane_season():
     """True if today falls within the Atlantic hurricane season."""
-    today = date.today()
+    today = _central_today()
     mm, dd = today.month, today.day
     start_m, start_d = SEASON_START
     end_m, end_d     = SEASON_END
