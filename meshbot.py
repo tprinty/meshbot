@@ -69,6 +69,7 @@ from modules.moon import Moon
 from modules.noaa_tides import NOAATides
 from modules.node_tracker import NodeTracker
 from modules.repeaters import Repeaters
+from modules.sun import Sun
 from modules.tides import TidesScraper
 from modules.tropics import TropicalWeather, hurricane_season_announcement
 from modules.twin_cipher import TwinHexDecoder, TwinHexEncoder
@@ -250,6 +251,12 @@ class MeshBot:
 
         # Moon phase — always available (pure local computation, no API).
         self.moon = Moon()
+
+        # Sun times — always available (pure local computation, no API).
+        self.sun = Sun(
+            lat=settings.get("WEATHER_LAT", 30.6954),
+            lon=settings.get("WEATHER_LON", -88.0399),
+        )
 
     # Function to periodically refresh weather, tides, alerts, and tropics
     def refresh_data(self):
@@ -802,6 +809,12 @@ class MeshBot:
         # Pure local computation — always available, no config, no network.
         self._send(self.moon.get_moon(), sender_id, wantAck=False)
 
+    def command_sun(self, sender_id):
+        logger.info("Sun Command Received")
+        self.transmission_count += 1
+        # Pure local computation — always available, no config, no network.
+        self._send(self.sun.get_sun(), sender_id, wantAck=False)
+
     @staticmethod
     def _fmt_age(seconds):
         """Humanize a seconds-since-heard value for a compact mesh report."""
@@ -879,7 +892,7 @@ class MeshBot:
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
-        cmds = ["#help", "#test", "#tst-detail", "#weather", "#tides", "#flipcoin", "#random", "#moon"]
+        cmds = ["#help", "#test", "#tst-detail", "#weather", "#tides", "#flipcoin", "#random", "#moon", "#sun"]
         if self.storm_alerts:
             cmds.append("#alerts")
         if self.repeaters:
@@ -980,6 +993,8 @@ class MeshBot:
                     self.command_metar(sender_id)
                 elif "#moon" in message:
                     self.command_moon(sender_id)
+                elif "#sun" in message:
+                    self.command_sun(sender_id)
                 elif "#status" in message:
                     self.command_status(sender_id)
                 elif "#test" in message:
