@@ -1,8 +1,15 @@
 import requests
 import logging
-import xml.etree.ElementTree as ET
+import re
+import warnings
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+# NHC RSS XML is occasionally malformed (e.g. duplicate </item> tags).
+# BeautifulSoup's html.parser tolerates this; xml.etree.ElementTree does not.
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +74,16 @@ class TropicalWeather:
             if resp.status_code != 200:
                 return "Failed to fetch tropical weather data."
 
-            root = ET.fromstring(resp.content)
+            soup = BeautifulSoup(resp.content, "html.parser")
 
             items = []
-            for item in root.iter("item"):
+            for item in soup.find_all("item"):
                 title_el = item.find("title")
                 desc_el  = item.find("description")
-                title = title_el.text.strip() if title_el is not None else ""
-                desc  = desc_el.text.strip()  if desc_el  is not None else ""
+                title = title_el.get_text(strip=True) if title_el else ""
+                desc  = desc_el.get_text(strip=True)  if desc_el  else ""
+                # Strip HTML tags from CDATA descriptions (NHC embeds links in some items)
+                desc = re.sub(r"<[^>]*>", "", desc)
 
                 # Filter: only active storm advisories, not general summaries
                 lower = title.lower()
