@@ -895,7 +895,7 @@ class MeshBot:
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
-        cmds = ["#help", "#test", "#tst-detail", "#weather", "#tides", "#flipcoin", "#random", "#moon", "#sun"]
+        cmds = ["#help", "#test", "#tst-detail", "#weather", "#forecast", "#tides", "#flipcoin", "#random", "#moon", "#sun"]
         if self.storm_alerts:
             cmds.append("#alerts")
         if self.repeaters:
@@ -998,6 +998,14 @@ class MeshBot:
                     self.command_moon(sender_id)
                 elif "#sun" in message:
                     self.command_sun(sender_id)
+                elif "#forecast" in message:
+                    info = self.forecast_info
+                    if not info:
+                        try:
+                            info = self.weather_fetcher.get_forecast()
+                        except Exception:
+                            info = "Forecast unavailable."
+                    self._send(info, sender_id, wantAck=True)
                 elif "#status" in message:
                     self.command_status(sender_id)
                 elif "#test" in message:
