@@ -149,7 +149,9 @@ STATUS_NODES:
 | `REPEATER_STATE_ID` | RepeaterBook state ID for filtering results. |
 | `TROPICS_ENABLED` | `True`: enable NHC Atlantic tropical weather tracking. |
 | `TROPICS_DAILY_ENABLED` | `True`: broadcast a daily tropics summary to channel 0 during hurricane season (Jun–Nov). |
-| `FORECAST_DAILY_ENABLED` | `True`: broadcast a daily weather forecast to channel 0 (same data as `#weather`, wttr.in). |
+| `TROPICS_DAILY_TIME` | CT time for the daily tropics broadcast (default: `07:00`). |
+| `FORECAST_DAILY_ENABLED` | `True`: broadcast a daily weather forecast to channel 0 (high/low, rain%, wind, UV — wttr.in JSON). |
+| `FORECAST_DAILY_TIME` | CT time for the daily forecast broadcast (default: `07:00`). |
 | `WEATHER_LAT` / `WEATHER_LON` | Coordinates for the current-conditions lookup. The bot resolves the nearest NWS observation station and reports temperature, heat index, and humidity. |
 | `METAR_STATION` | ICAO station code for the `#metar` command (e.g. `KMOB`). Fetches the latest aviation METAR observation. |
 | `OPERATOR_NODE` | Node number allowed to run the operator-only `#status` command. If unset, `#status` is inert. |
@@ -208,9 +210,12 @@ Replies go back on the same channel the message arrived on: a direct message to 
 | `#help` | List available commands |
 | `#test` | Receive a test acknowledgement |
 | `#tst-detail` | Test with SNR, RSSI, and hop count detail |
-| `#weather` | Local weather report |
-| `#temp` | Current temperature, heat index, and humidity (requires `WEATHER_LAT`/`LON`) |
+| `#weather` | Current conditions — temp, wind, sunrise/sunset |
+| `#forecast` | Daily forecast — high/low, rain%, wind, UV, sunrise/sunset |
+| `#temp` | Temperature, heat index, and humidity from nearest NWS station (requires `WEATHER_LAT`/`LON`) |
 | `#metar` | Raw aviation METAR observation (requires `METAR_STATION`) |
+| `#moon` | Moon phase, illumination %, and next full moon date |
+| `#sun` | Sunrise, sunset, dawn, and dusk times (civil twilight) |
 | `#status` | Operator-only node health report (requires `OPERATOR_NODE` + `STATUS_NODES`). Reports last-heard, SNR, and battery for each monitored node — always replies privately to the operator, never broadcasts. |
 | `#tides` | Tide info for the configured location |
 | `#alerts` | Current NWS storm alerts (requires `NWS_ZONE`) |
