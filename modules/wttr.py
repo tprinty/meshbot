@@ -17,7 +17,7 @@ class WeatherFetcher:
                 response_text = response_text.replace(" shower", "")
                 weather_info = response_text.split()
                 condition = weather_info[0].strip()
-                temperature = weather_info[1].strip()
+                temperature = weather_info[1].strip().lstrip('+')
                 wind = weather_info[2].strip()
                 dawn = weather_info[-2].strip()
                 sunset = weather_info[-1].strip()
