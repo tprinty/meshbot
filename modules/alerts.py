@@ -44,7 +44,7 @@ class StormAlerts:
                 self.BASE_URL,
                 params={"zone": self.zone_code},
                 headers={"Accept": "application/geo+json"},
-                timeout=10,
+                timeout=20,
             )
             if resp.status_code != 200:
                 logger.warning(
@@ -67,6 +67,11 @@ class StormAlerts:
                 })
             return results
 
+        except requests.exceptions.Timeout:
+            logger.warning(
+                "NWS alerts API timed out — will retry next poll"
+            )
+            return None
         except Exception as e:
             logger.error("Failed to fetch structured alerts: %s", e)
             return None
