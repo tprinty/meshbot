@@ -127,6 +127,7 @@ class MeshBot:
         self.tides_info = None
         self.alerts_info = None
         self.tropics_info = None
+        self.forecast_info = None
 
         self.transmission_count = 0
         self.cooldown = False
@@ -262,6 +263,7 @@ class MeshBot:
     def refresh_data(self):
         while True:
             self.weather_info = self.weather_fetcher.get_weather()
+            self.forecast_info = self.weather_fetcher.get_forecast()
             if self.noaa_tides:
                 self.tides_info = self.noaa_tides.get_tides()
             else:
@@ -591,8 +593,9 @@ class MeshBot:
         """Broadcast a daily weather forecast to channel 0 at the
         configured time (default 07:00 CT).
 
-        Uses the same wttr.in forecast as #weather, cached hourly by
-        refresh_data. Falls back to a live fetch if the cache is empty.
+        Uses the wttr.in JSON forecast (daily high/low, rain%, wind, UV).
+        Cached hourly by refresh_data; falls back to a live fetch if the
+        cache is empty.
         """
         sent_today = None
         while True:
@@ -611,10 +614,10 @@ class MeshBot:
                     elif delta > 15:
                         sent_today = today  # too late; skip today
                     else:
-                        info = self.weather_info
+                        info = self.forecast_info
                         if not info:
                             try:
-                                info = self.weather_fetcher.get_weather()
+                                info = self.weather_fetcher.get_forecast()
                             except Exception:
                                 info = ""
                         if info:
@@ -625,7 +628,7 @@ class MeshBot:
                             msg = f"{header}\n{info.strip()}"
                             try:
                                 self.interface.sendText(
-                                    msg, wantAck=False
+                                    msg, wantAck=True
                                 )
                                 logger.info(
                                     "Daily forecast broadcast sent"

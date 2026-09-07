@@ -8,7 +8,7 @@ def _make_bot(forecast_daily_enabled=True, forecast_daily_time="07:00"):
     import meshbot
     bot = meshbot.MeshBot(serial_port=["/dev/null"], db="mpowered")
     bot.interface = MagicMock()
-    bot.weather_info = "☀️ Sunny\n🌡️ +98°F\n💨 ↑3mph\n🌞 06:25\n🌛 19:23\n"
+    bot.forecast_info = "☀️ Sunny  ☂️ 10%\n🌡️ 75°F → 98°F\n💨 N 3mph  UV 9\n🌞 6:25a  🌛 7:23p"
     bot.forecast_daily_enabled = forecast_daily_enabled
     bot.forecast_daily_time = forecast_daily_time
     return bot
@@ -34,11 +34,11 @@ class TestDailyForecastBroadcaster(unittest.TestCase):
         if delta < 0 or delta > 15:
             return
 
-        info = bot.weather_info
+        info = bot.forecast_info
         if info:
             header = f"🌅 West Mobile — {today.strftime('%a %b %-d')}"
             msg = f"{header}\n{info.strip()}"
-            bot.interface.sendText(msg, wantAck=False)
+            bot.interface.sendText(msg, wantAck=True)
 
     def test_broadcasts_at_configured_time(self):
         bot = _make_bot()
@@ -48,37 +48,37 @@ class TestDailyForecastBroadcaster(unittest.TestCase):
         self.assertIn("West Mobile", msg)
         self.assertIn("Thu Aug 27", msg)
         self.assertIn("☀️ Sunny", msg)
+        self.assertIn("75°F → 98°F", msg)
 
     def test_no_broadcast_before_time(self):
         bot = _make_bot()
-        self._tick(bot, 2026, 8, 27, 6, 30)  # before 7am
+        self._tick(bot, 2026, 8, 27, 6, 30)
         bot.interface.sendText.assert_not_called()
 
     def test_no_broadcast_too_late(self):
         bot = _make_bot()
-        self._tick(bot, 2026, 8, 27, 7, 30)  # 30 min past — outside 15-min window
+        self._tick(bot, 2026, 8, 27, 7, 30)
         bot.interface.sendText.assert_not_called()
 
     def test_broadcast_with_empty_cache_fallback(self):
         bot = _make_bot()
-        bot.weather_info = ""
+        bot.forecast_info = ""
         bot.weather_fetcher = MagicMock()
-        bot.weather_fetcher.get_weather.return_value = "Cloudy\n🌡️ +72°F\n"
-        # The broadcaster falls back to weather_fetcher — test that path.
+        bot.weather_fetcher.get_forecast.return_value = (
+            "☁️ Cloudy  ☂️ 50%\n🌡️ 70°F → 85°F\n💨 S 5mph  UV 6\n🌞 6:30a  🌛 7:15p"
+        )
         self._tick(bot, 2026, 8, 27, 7, 5)
-        # No cached info, and _tick doesn't replicate fallback logic.
-        # Test that the config flag works.
         self.assertTrue(bot.forecast_daily_enabled)
 
     def test_disabled_flag(self):
         bot = _make_bot(forecast_daily_enabled=False)
         self.assertFalse(bot.forecast_daily_enabled)
 
-    def test_sends_public_broadcast(self):
+    def test_sends_public_broadcast_with_ack(self):
         bot = _make_bot()
         self._tick(bot, 2026, 8, 27, 7, 5)
         call_kwargs = bot.interface.sendText.call_args[1]
-        self.assertEqual(call_kwargs.get("wantAck"), False)
+        self.assertEqual(call_kwargs.get("wantAck"), True)
         self.assertNotIn("destinationId", call_kwargs)
 
 
