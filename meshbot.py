@@ -628,7 +628,7 @@ class MeshBot:
                             msg = f"{header}\n{info.strip()}"
                             try:
                                 self.interface.sendText(
-                                    msg, wantAck=True
+                                    msg, wantAck=False
                                 )
                                 logger.info(
                                     "Daily forecast broadcast sent"
