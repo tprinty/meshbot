@@ -102,3 +102,42 @@ class TropicalWeather:
         except Exception as e:
             logger.error("Failed to fetch tropical weather: %s", e)
             return "Failed to fetch tropical weather data."
+
+    def get_tropics_items(self):
+        """Return active NHC advisory items as a list of dicts.
+
+        Each dict has: id (advisory title), title, description.
+        Returns None on fetch failure, empty list if no active storms.
+        Used by the tropics poller to detect new advisories.
+        """
+        try:
+            resp = requests.get(NHC_RSS_URL, timeout=10)
+            if resp.status_code != 200:
+                return None
+
+            soup = BeautifulSoup(resp.content, "html.parser")
+
+            items = []
+            for item in soup.find_all("item"):
+                title_el = item.find("title")
+                desc_el = item.find("description")
+                title = title_el.get_text(strip=True) if title_el else ""
+                desc = desc_el.get_text(strip=True) if desc_el else ""
+                desc = re.sub(r"<[^>]*>", "", desc)
+
+                lower = title.lower()
+                if any(k in lower for k in ("advisory", "tropical storm",
+                                              "hurricane", "depression")):
+                    if len(desc) > 200:
+                        desc = desc[:197] + "..."
+                    items.append({
+                        "id": title,
+                        "title": title,
+                        "description": desc,
+                    })
+
+            return items
+
+        except Exception as e:
+            logger.error("Failed to fetch tropics items: %s", e)
+            return None

@@ -229,6 +229,14 @@ class MeshBot:
             "TROPICS_DAILY_TIME", "07:00"
         )
 
+        # Optional: tropics poller — broadcasts new NHC advisories
+        self.tropics_poll_enabled = settings.get(
+            "TROPICS_POLL_ENABLED", False
+        )
+        self.tropics_poll_interval = settings.get(
+            "TROPICS_POLL_INTERVAL", 1800
+        )
+
         # Optional: daily morning forecast broadcast (uses same wttr.in
         # forecast as #weather, cached hourly by refresh_data)
         self.forecast_daily_enabled = settings.get(
@@ -708,6 +716,84 @@ class MeshBot:
 
             time.sleep(self.alerts_poll_interval)
 
+    def _tropics_poller(self):
+        """Background thread: poll NHC RSS feed for new tropical storm
+        advisories and broadcast them as they appear.
+
+        First poll seeds the "already sent" set so we don't spam on
+        restart. Each subsequent poll broadcasts only advisory titles
+        that have not been seen before.
+        """
+        self._sent_tropics_ids = set()
+        first_run = True
+
+        while True:
+            try:
+                if self.tropical_weather is None:
+                    time.sleep(self.tropics_poll_interval)
+                    continue
+
+                items = self.tropical_weather.get_tropics_items()
+                if items is None:
+                    logger.warning(
+                        "Tropics poller: NHC RSS returned error; "
+                        "will retry"
+                    )
+                    time.sleep(self.tropics_poll_interval)
+                    continue
+
+                active_ids = {a["id"] for a in items}
+
+                if first_run:
+                    self._sent_tropics_ids = active_ids
+                    first_run = False
+                    logger.info(
+                        "Tropics poller: seeded %d active advisory(s)",
+                        len(active_ids),
+                    )
+                else:
+                    for a in items:
+                        if a["id"] not in self._sent_tropics_ids:
+                            self._sent_tropics_ids.add(a["id"])
+                            desc = a["description"]
+                            # Keep total message under ~230 UTF-8 bytes
+                            # (Meshtastic limit is ~237 bytes)
+                            max_desc_chars = 200 - len(a['title'])
+                            if len(desc) > max_desc_chars:
+                                desc = desc[:max_desc_chars - 3] + "..."
+                            msg = (
+                                f"🌀 {a['title']}\n"
+                                f"{desc}"
+                            )
+                            # Final safety net: truncate to byte limit
+                            msg_bytes = msg.encode('utf-8')
+                            if len(msg_bytes) > 230:
+                                msg = msg_bytes[:227].decode(
+                                    'utf-8', errors='replace'
+                                ) + "..." 
+                            try:
+                                self.interface.sendText(
+                                    msg, wantAck=False
+                                )
+                                logger.info(
+                                    "Tropics broadcast: %s",
+                                    a["title"][:80],
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    "Failed tropics broadcast: %s", e
+                                )
+
+                    # Clean up stale IDs
+                    self._sent_tropics_ids = (
+                        self._sent_tropics_ids & active_ids
+                    )
+
+            except Exception as e:
+                logger.error("Tropics poller loop error: %s", e)
+
+            time.sleep(self.tropics_poll_interval)
+
     def _extract_alert_description(self, desc, max_chars=200):
         """Extract the first paragraph of a NWS alert description.
 
@@ -1101,6 +1187,18 @@ class MeshBot:
             logger.info(
                 "Alert polling enabled (every %ds)",
                 self.alerts_poll_interval,
+            )
+
+        # NHC tropics poller — broadcasts new advisories as they appear
+        if self.tropics_poll_enabled and self.tropical_weather:
+            tropics_poll_thread = threading.Thread(
+                target=self._tropics_poller
+            )
+            tropics_poll_thread.daemon = True
+            tropics_poll_thread.start()
+            logger.info(
+                "Tropics polling enabled (every %ds)",
+                self.tropics_poll_interval,
             )
 
         # Keep the main thread alive
