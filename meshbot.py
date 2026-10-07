@@ -772,42 +772,35 @@ class MeshBot:
                         len(active_ids),
                     )
                 else:
-                    for a in items:
-                        if a["id"] not in self._sent_tropics_ids:
-                            self._sent_tropics_ids.add(a["id"])
-                            desc = a["description"]
-                            # Keep total message under ~230 UTF-8 bytes
-                            # (Meshtastic limit is ~237 bytes)
-                            max_desc_chars = 200 - len(a['title'])
-                            if len(desc) > max_desc_chars:
-                                desc = desc[:max_desc_chars - 3] + "..."
+                    # Detect if a new Summary advisory appeared
+                    # (the Summary changes every advisory cycle)
+                    prev_summary_ids = getattr(
+                        self, '_sent_tropics_summary_ids', set()
+                    )
+                    curr_summary_ids = {
+                        a["id"] for a in items
+                        if "Summary" in a["title"]
+                    }
+                    if curr_summary_ids - prev_summary_ids:
+                        try:
                             msg = (
-                                f"🌀 {a['title']}\n"
-                                f"{desc}"
+                                self.tropical_weather
+                                .summarize_for_mesh()
                             )
-                            # Final safety net: truncate to byte limit
-                            msg_bytes = msg.encode('utf-8')
-                            if len(msg_bytes) > 230:
-                                msg = msg_bytes[:227].decode(
-                                    'utf-8', errors='replace'
-                                ) + "..." 
-                            try:
+                            if msg:
                                 self.interface.sendText(
                                     msg, wantAck=False
                                 )
+                                nbytes = len(msg.encode('utf-8'))
                                 logger.info(
-                                    "Tropics broadcast: %s",
-                                    a["title"][:80],
+                                    "Tropics broadcast sent "
+                                    "(%d bytes)", nbytes,
                                 )
-                            except Exception as e:
-                                logger.error(
-                                    "Failed tropics broadcast: %s", e
-                                )
-
-                    # Clean up stale IDs
-                    self._sent_tropics_ids = (
-                        self._sent_tropics_ids & active_ids
-                    )
+                        except Exception as e:
+                            logger.error(
+                                "Failed tropics broadcast: %s", e
+                            )
+                    self._sent_tropics_summary_ids = curr_summary_ids
 
             except Exception as e:
                 logger.error("Tropics poller loop error: %s", e)

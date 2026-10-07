@@ -128,8 +128,6 @@ class TropicalWeather:
                 lower = title.lower()
                 if any(k in lower for k in ("advisory", "tropical storm",
                                               "hurricane", "depression")):
-                    if len(desc) > 200:
-                        desc = desc[:197] + "..."
                     items.append({
                         "id": title,
                         "title": title,
@@ -141,3 +139,88 @@ class TropicalWeather:
         except Exception as e:
             logger.error("Failed to fetch tropics items: %s", e)
             return None
+
+    def summarize_for_mesh(self):
+        """Return a compact, mesh-friendly summary of current tropical
+        activity, or None if nothing to report.
+
+        Parses the NHC Summary advisory to extract storm type, winds,
+        pressure, location, movement, and strengthening forecast.
+        Output fits in a single Meshtastic packet (~237 bytes).
+        """
+        items = self.get_tropics_items()
+        if not items:
+            return None
+
+        # Find the Summary advisory (has the compact data we need)
+        summary = None
+        for item in items:
+            if "Summary for" in item["title"]:
+                summary = item
+                break
+        if not summary:
+            return None
+
+        desc = summary["description"]
+
+        # Extract storm name/type from title
+        title = summary["title"]
+        # "Summary for Tropical Depression Nine (AT4/AL092026)"
+        storm_match = re.search(
+            r"Summary for (.+?) \(", title
+        )
+        storm_name = storm_match.group(1) if storm_match else title
+
+        # Extract headline between ... markers
+        headline = ""
+        hl_match = re.search(r"\.\.\.(.+?)\.\.\.", desc)
+        if hl_match:
+            headline = hl_match.group(1).strip()
+
+        # Extract winds
+        winds = ""
+        wind_match = re.search(
+            r"sustained winds of (?:about )?(\d+) mph", desc
+        )
+        if wind_match:
+            winds = f"{wind_match.group(1)}mph"
+
+        # Extract pressure
+        pressure = ""
+        pres_match = re.search(
+            r"pressure was (\d+) mb", desc
+        )
+        if pres_match:
+            pressure = f"{pres_match.group(1)}mb"
+
+        # Extract location
+        location = ""
+        loc_match = re.search(
+            r"located near ([\d.]+),\s*-?([\d.]+)", desc
+        )
+        if loc_match:
+            lat, lon = loc_match.group(1), loc_match.group(2)
+            location = f"{lat}N {lon}W"
+
+        # Extract movement
+        movement = ""
+        mov_match = re.search(
+            r"movement (\w+) at (\d+) mph", desc
+        )
+        if mov_match:
+            movement = f"{mov_match.group(1)} {mov_match.group(2)}mph"
+
+        # Build compact message
+        parts = [f"\U0001f300 {storm_name}"]
+        if winds or pressure:
+            stats = " | ".join(x for x in (winds, pressure) if x)
+            parts.append(stats)
+        if location:
+            loc_line = f"\U0001f4cd {location}"
+            if movement:
+                loc_line += f" | \u2192 {movement}"
+            parts.append(loc_line)
+        if headline:
+            parts.append(f"\u26a0 {headline}")
+
+        return "\n".join(parts)
