@@ -117,6 +117,26 @@ def _central_now():
     return _dt.datetime.now(ZoneInfo("America/Chicago"))
 
 
+def _fit_mesh(msg, max_bytes=230):
+    """Truncate msg to fit within Meshtastic's text payload limit.
+
+    Encodes to UTF-8 and truncates at a word boundary (space) so
+    emoji and multi-byte characters are handled correctly.  Appends
+    '…' when truncation happens.
+
+    LongFast preset allows ~237 bytes; 230 leaves a small margin.
+    """
+    encoded = msg.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return msg
+    # Walk back to last space before the byte limit
+    truncated = encoded[:max_bytes]
+    last_space = truncated.rfind(b" ")
+    if last_space > max_bytes // 2:
+        truncated = truncated[:last_space]
+    return truncated.decode("utf-8", errors="replace") + "…"
+
+
 class MeshBot:
 
     def __init__(self, ip_host = None, serial_port = None, db = None):
@@ -532,7 +552,7 @@ class MeshBot:
                 msg = hurricane_season_announcement()
                 if msg:
                     try:
-                        self.interface.sendText(msg, wantAck=False)
+                        self.interface.sendText(_fit_mesh(msg), wantAck=False)
                         logger.info("Hurricane season announcement sent.")
                     except Exception as e:
                         logger.error("Failed to send hurricane season announcement: %s", e)
@@ -584,7 +604,7 @@ class MeshBot:
                             msg = f"{header}\n{info}"
                             try:
                                 self.interface.sendText(
-                                    msg, wantAck=False
+                                    _fit_mesh(msg), wantAck=False
                                 )
                                 logger.info(
                                     "Daily tropics broadcast sent "
@@ -636,7 +656,7 @@ class MeshBot:
                             msg = f"{header}\n{info.strip()}"
                             try:
                                 self.interface.sendText(
-                                    msg, wantAck=False
+                                    _fit_mesh(msg), wantAck=True
                                 )
                                 logger.info(
                                     "Daily forecast broadcast sent"
@@ -696,7 +716,7 @@ class MeshBot:
                             if msg:
                                 try:
                                     self.interface.sendText(
-                                        msg, wantAck=False,
+                                        _fit_mesh(msg), wantAck=False,
                                     )
                                     logger.info(
                                         "Alert broadcast: %s", a["event"]
