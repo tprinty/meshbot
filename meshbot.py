@@ -1056,7 +1056,6 @@ class MeshBot:
         total = len(self.status_nodes)
         header = f"🕸️ WeMo: {online}/{total} monitored online"
         self._send("\n".join([header] + lines), sender_id, wantAck=False)
-
     def command_nodes(self, sender_id):
         """List all visible mesh nodes. Always replies direct (DM)."""
         logger.info("Nodes Command Received")
@@ -1066,7 +1065,7 @@ class MeshBot:
 
         nodes = getattr(self.interface, "nodesByNum", None) or {}
         if not nodes:
-            self._send("No nodes in table.", sender_id, wantAck=False)
+            self._send("No nodes in table.", sender_id, wantAck=True)
             return
 
         now = int(time.time())
@@ -1093,12 +1092,12 @@ class MeshBot:
             lines.append("  ".join(parts))
 
         if not lines:
-            self._send("No other nodes visible.", sender_id, wantAck=False)
+            self._send("No other nodes visible.", sender_id, wantAck=True)
             return
 
         header = f"🕸️ {len(lines)} node{'s' if len(lines) != 1 else ''}"
         output = _fit_mesh("\n".join([header] + lines))
-        self._send(output, sender_id, wantAck=False)
+        self._send(output, sender_id, wantAck=True)
 
 
     def command_help(self, interface, sender_id):
