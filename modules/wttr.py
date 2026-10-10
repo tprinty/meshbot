@@ -45,44 +45,97 @@ def _compact_time(t):
         return t
 
 
+def _find_rain_window(hourly):
+    """Scan 3-hourly slots, return time window for highest-rain block.
+
+    Returns a string like '12a-9a', '3p', or '' if no rain.
+    """
+    slots = []
+    for h in hourly:
+        time_raw = str(h.get("time", "0")).zfill(4)
+        hour = int(time_raw[:2] or "0")
+        ampm = "a" if hour < 12 else "p"
+        display = hour % 12
+        if display == 0:
+            display = 12
+        rain = int(h.get("chanceofrain", 0) or 0)
+        slots.append((f"{display}{ampm}", rain, hour))
+
+    # Find contiguous blocks with rain > 0
+    blocks = []
+    current = []
+    for label, rain, hour in slots:
+        if rain > 0:
+            current.append((label, rain, hour))
+        else:
+            if current:
+                blocks.append(current)
+                current = []
+    if current:
+        blocks.append(current)
+
+    if not blocks:
+        return ""
+
+    # Pick the block with the highest peak rain chance
+    best = max(blocks, key=lambda b: max(r for _, r, _ in b))
+    if len(best) == 1:
+        return best[0][0]
+    return f"{best[0][0]}-{best[-1][0]}"
+
+
 class WeatherFetcher:
     def __init__(self, location):
         self.location = location
 
     def get_weather(self):
-        """Current conditions from wttr.in text format."""
-        url = f"https://wttr.in/{self.location}?format=%C|%t|%w|%S|%s"
+        """Daily forecast: high/low, rain% + timing, sunrise/sunset.
+
+        Compact format:
+            🌡️ min°F → max°F
+            ☂️ rain% time-window
+            🌞 sunrise  🌛 sunset
+        """
+        url = f"https://wttr.in/{self.location}?format=j1"
         try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                response_text = response.text.replace("Partly ", "")
-                response_text = response_text.replace("Light ", "")
-                response_text = response_text.replace(" shower", "")
-                parts = response_text.split("|")
-                condition = parts[0].strip()
-                temperature = parts[1].strip().lstrip('+')
-                wind = parts[2].strip()
-                dawn = parts[-2].strip()
-                sunset = parts[-1].strip()
-
-                emoji = _pick_emoji(condition)
-
-                output = f"{emoji} {condition}\n"
-                output += f"🌡️ {temperature}\n"
-                output += f"💨 {wind}\n"
-                output += f"🌞 {dawn}\n"
-                output += f"🌛 {sunset}\n"
-                # Strip any wttr.in private-use Unicode characters
-                # (U+E000–U+F8FF) that Meshtastic screens can't render.
-                output = "".join(
-                    c for c in output if ord(c) < 0xE000 or ord(c) > 0xF8FF
-                )
-                return output
-            else:
+            response = requests.get(url, timeout=15)
+            if response.status_code != 200:
                 return "Failed to fetch weather data."
-        except ConnectionResetError as e:
-            logger.error("Failed to fetch weather data: Connection reset error: %s", e)
-            return "Failed to fetch weather data."
+            data = response.json()
+            today = data.get("weather", [{}])[0]
+            if not today:
+                return "Failed to fetch weather data."
+
+            max_temp = today.get("maxtempF", "?")
+            min_temp = today.get("mintempF", "?")
+
+            # Rain — max chance across all hours + when
+            hourly = today.get("hourly", [])
+            max_rain = max(
+                (int(h.get("chanceofrain", 0) or 0) for h in hourly),
+                default=0
+            )
+            rain_window = _find_rain_window(hourly)
+
+            # Sunrise / sunset
+            astro = today.get("astronomy", [{}])[0]
+            sunrise = _compact_time(astro.get("sunrise", "?"))
+            sunset = _compact_time(astro.get("sunset", "?"))
+
+            output = f"🌡️ {min_temp}°F → {max_temp}°F\n"
+            if max_rain > 0 and rain_window:
+                output += f"☂️ {max_rain}% {rain_window}\n"
+            else:
+                output += "☂️ 0%\n"
+            output += f"🌞 {sunrise}  🌛 {sunset}"
+
+            # Strip any wttr.in private-use Unicode characters
+            # (U+E000–U+F8FF) that Meshtastic screens can't render.
+            output = "".join(
+                c for c in output if ord(c) < 0xE000 or ord(c) > 0xF8FF
+            )
+            return output
+
         except Exception as e:
             logger.error("Failed to fetch weather data: %s", e)
             return "Failed to fetch weather data."
@@ -103,7 +156,7 @@ class WeatherFetcher:
             response = requests.get(url, timeout=15)
             if response.status_code != 200:
                 return self._forecast_fallback()
-            data = json.loads(response.text)
+            data = response.json()
             today = data.get("weather", [{}])[0]
             if not today:
                 return self._forecast_fallback()
@@ -153,5 +206,5 @@ class WeatherFetcher:
             return self._forecast_fallback()
 
     def _forecast_fallback(self):
-        """Fall back to current conditions when forecast API fails."""
+        """Fall back to daily summary when forecast API fails."""
         return self.get_weather()

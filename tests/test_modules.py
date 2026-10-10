@@ -27,13 +27,31 @@ class TestWeatherFetcher(unittest.TestCase):
     @patch("modules.wttr.requests.get")
     def test_sunny_response(self, mock_get):
         mock_get.return_value = _mock_response(
-            text="Sunny|+75°F|→10mph|06:15AM|07:45PM"
+            json_data={
+                "weather": [{
+                    "maxtempF": "75",
+                    "mintempF": "55",
+                    "uvIndex": "5",
+                    "hourly": [
+                        {"time": "0", "chanceofrain": "0",
+                         "weatherDesc": [{"value": "Sunny"}],
+                         "winddir16Point": "N", "windspeedMiles": "10"},
+                        {"time": "300", "chanceofrain": "0",
+                         "weatherDesc": [{"value": "Clear"}]},
+                        {"time": "600", "chanceofrain": "10",
+                         "weatherDesc": [{"value": "Partly cloudy"}]},
+                    ],
+                    "astronomy": [{"sunrise": "06:15 AM",
+                                   "sunset": "07:45 PM"}],
+                }]
+            }
         )
         from modules.wttr import WeatherFetcher
         wf = WeatherFetcher("Mobile, AL")
         result = wf.get_weather()
-        self.assertIn("Sunny", result)
+        self.assertIn("55", result)
         self.assertIn("75", result)
+        self.assertIn("☂️", result)
 
     @patch("modules.wttr.requests.get")
     def test_http_error(self, mock_get):

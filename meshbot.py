@@ -50,9 +50,12 @@ from pathlib import Path
 import requests
 import yaml
 
+from paho.mqtt import client as mqtt_client
+
 try:
     import meshtastic.serial_interface
     import meshtastic.tcp_interface
+    from meshtastic.protobuf import mesh_pb2, mqtt_pb2, config_pb2
     from pubsub import pub
 except ImportError:
     print(
@@ -255,6 +258,14 @@ class MeshBot:
         )
         self.tropics_poll_interval = settings.get(
             "TROPICS_POLL_INTERVAL", 1800
+        )
+
+        # MQTT forwarder — publishes node position to meshtastic.org
+        self.mqtt_forwarder_enabled = settings.get(
+            "MQTT_FORWARDER_ENABLED", False
+        )
+        self.mqtt_forwarder_interval = settings.get(
+            "MQTT_FORWARDER_INTERVAL", 3600
         )
 
         # Optional: daily morning forecast broadcast (uses same wttr.in
@@ -1135,7 +1146,16 @@ class MeshBot:
                 elif "#twin" in message:
                     self.command_twin(message, interface, sender_id)
                 elif "#weather" in message:
-                    self._send(self.weather_info, sender_id, wantAck=True)
+                    output = self.weather_info or "Weather unavailable."
+                    # Append brief storm alerts if any are active
+                    if self.storm_alerts and self.alerts_info:
+                        ai = self.alerts_info
+                        if ai not in ("No active alerts.",
+                                      "Failed to fetch alerts."):
+                            for line in ai.strip().split("\n")[:2]:
+                                event = line.split(":")[0].strip()
+                                output += f"\n⚠️ {event}"
+                    self._send(output, sender_id, wantAck=True)
                 elif "#tides" in message:
                     self._send(self.tides_info, sender_id, wantAck=True)
                 elif "#alerts" in message:
@@ -1191,6 +1211,106 @@ class MeshBot:
 
 
     # Main function
+    def _mqtt_forwarder(self):
+        """Periodically publish a MapReport to meshtastic.org for meshmap.net.
+
+        Uses the existing serial interface — no separate process needed.
+        The radio (Tracker L1) has no WiFi, so we publish MapReports from
+        this VM on its behalf.
+        """
+        logger.info(
+            "MQTT forwarder started (every %ds)", self.mqtt_forwarder_interval
+        )
+        # Let the interface fully initialize before first attempt
+        time.sleep(15)
+
+        while True:
+            try:
+                self._publish_map_report()
+            except Exception:
+                logger.exception("MQTT forwarder publish failed")
+            time.sleep(self.mqtt_forwarder_interval)
+
+    def _publish_map_report(self):
+        """Build and publish a single MapReport to the MQTT broker."""
+        # Get local node info from the interface
+        my_num = self.interface.myInfo.my_node_num
+        my_id = f"!{my_num:08x}"
+
+        # Find our node in the nodes dict
+        our_node = None
+        for nid, node in self.interface.nodes.items():
+            if node.get("num") == my_num:
+                our_node = node
+                break
+
+        if not our_node:
+            logger.warning("MQTT forwarder: local node not found in node DB")
+            return
+
+        pos = our_node.get("position", {})
+        lat = pos.get("latitudeI", 0)
+        lon = pos.get("longitudeI", 0)
+        if lat == 0 and lon == 0:
+            logger.debug("MQTT forwarder: no position yet, skipping")
+            return
+
+        user = our_node.get("user", {})
+
+        # Build MapReport protobuf
+        mr = mqtt_pb2.MapReport()
+        mr.long_name = user.get("longName", "WeMoBot")
+        mr.short_name = user.get("shortName", "WeMo")
+        mr.role = config_pb2.Config.DeviceConfig.Role.CLIENT
+        mr.hw_model = mesh_pb2.HardwareModel.SEEED_WIO_TRACKER_L1
+        mr.firmware_version = "2.7.15"
+        mr.region = config_pb2.Config.LoRaConfig.RegionCode.US
+        mr.modem_preset = config_pb2.Config.LoRaConfig.ModemPreset.LONG_FAST
+        mr.has_default_channel = True
+        mr.latitude_i = lat
+        mr.longitude_i = lon
+        mr.altitude = int(pos.get("altitude", 0))
+        mr.position_precision = 24
+        mr.num_online_local_nodes = our_node.get("nodedbCount", 0)
+        mr.has_opted_report_location = True
+
+        payload = mr.SerializeToString()
+
+        # Wrap in ServiceEnvelope
+        se = mqtt_pb2.ServiceEnvelope()
+        se.channel_id = ""
+        se.gateway_id = my_id
+
+        packet = mesh_pb2.MeshPacket()
+        packet.decoded.portnum = 1
+        packet.decoded.payload = payload
+        packet.id = int(time.time() * 1e9) & 0xFFFFFFFF
+        se.packet.CopyFrom(packet)
+
+        # Publish — one-shot connection, not persistent
+        try:
+            client = mqtt_client.Client(
+                mqtt_client.CallbackAPIVersion.VERSION1,
+                client_id=f"wemobot-mapreport-{int(time.time())}",
+            )
+            client.username_pw_set("meshdev", "large4cats")
+            client.connect("mqtt.meshtastic.org", 1883, keepalive=10)
+            client.loop_start()
+            topic = f"msh/US/2/c/LongFast/{my_id}"
+            result = client.publish(topic, se.SerializeToString(), qos=1)
+            result.wait_for_publish(timeout=5)
+            client.loop_stop()
+            client.disconnect()
+
+            logger.info(
+                "MQTT MapReport published: lat=%.5f lon=%.5f alt=%dm "
+                "nodes=%d",
+                lat / 1e7, lon / 1e7, mr.altitude,
+                mr.num_online_local_nodes,
+            )
+        except Exception:
+            logger.exception("MQTT broker connection failed")
+
     def run(self):
         logger.info("Starting program.")
 
@@ -1267,6 +1387,18 @@ class MeshBot:
             logger.info(
                 "Tropics polling enabled (every %ds)",
                 self.tropics_poll_interval,
+            )
+
+        # MQTT forwarder — publishes MapReports to meshtastic.org
+        if self.mqtt_forwarder_enabled:
+            mqtt_fwd_thread = threading.Thread(
+                target=self._mqtt_forwarder
+            )
+            mqtt_fwd_thread.daemon = True
+            mqtt_fwd_thread.start()
+            logger.info(
+                "MQTT forwarder enabled (every %ds)",
+                self.mqtt_forwarder_interval,
             )
 
         # Keep the main thread alive
