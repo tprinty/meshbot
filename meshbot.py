@@ -599,7 +599,19 @@ class MeshBot:
                                 time.sleep(60 * 15)
                                 continue
                         info = self.tropics_info
-                        if self.tropical_weather and info:
+                        # Don't broadcast failure strings to the mesh
+                        if info and info.startswith("Failed"):
+                            logger.warning(
+                                "Tropics cache is stale; trying live fetch"
+                            )
+                            try:
+                                info = (
+                                    self.tropical_weather
+                                    .get_tropics()
+                                )
+                            except Exception:
+                                info = ""
+                        if self.tropical_weather and info and not info.startswith("Failed"):
                             header = f"🌀 Daily Tropics — {today.strftime('%a %b %-d')}"
                             msg = f"{header}\n{info}"
                             try:
@@ -643,6 +655,21 @@ class MeshBot:
                         sent_today = today  # too late; skip today
                     else:
                         info = self.forecast_info
+                        if info and (
+                            isinstance(info, str)
+                            and info.startswith("Failed")
+                        ):
+                            logger.warning(
+                                "Forecast cache is stale; "
+                                "trying live fetch"
+                            )
+                            try:
+                                info = (
+                                    self.weather_fetcher
+                                    .get_forecast()
+                                )
+                            except Exception:
+                                info = ""
                         if not info:
                             try:
                                 info = self.weather_fetcher.get_forecast()
