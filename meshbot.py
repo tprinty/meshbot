@@ -1070,7 +1070,13 @@ class MeshBot:
 
         now = int(time.time())
         lines = []
-        for num, node in nodes.items():
+        # Sort by lastHeard (most recent first) so truncation drops stale nodes
+        sorted_nodes = sorted(
+            nodes.items(),
+            key=lambda kv: kv[1].get('lastHeard', 0) or 0,
+            reverse=True
+        )
+        for num, node in sorted_nodes:
             # Skip our own node
             if str(num) == str(self.mynode):
                 continue
@@ -1096,7 +1102,7 @@ class MeshBot:
             return
 
         header = f"🕸️ {len(lines)} node{'s' if len(lines) != 1 else ''}"
-        output = _fit_mesh("\n".join([header] + lines))
+        output = _fit_mesh("\n".join([header] + lines), max_bytes=180)
         self._send(output, sender_id, wantAck=True)
 
 
