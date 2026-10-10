@@ -27,7 +27,7 @@ class TestWeatherFetcher(unittest.TestCase):
     @patch("modules.wttr.requests.get")
     def test_sunny_response(self, mock_get):
         mock_get.return_value = _mock_response(
-            text="Sunny +75°F →10mph 06:15AM 07:45PM"
+            text="Sunny|+75°F|→10mph|06:15AM|07:45PM"
         )
         from modules.wttr import WeatherFetcher
         wf = WeatherFetcher("Mobile, AL")

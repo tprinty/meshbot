@@ -51,19 +51,19 @@ class WeatherFetcher:
 
     def get_weather(self):
         """Current conditions from wttr.in text format."""
-        url = f"https://wttr.in/{self.location}?format=%C+%t+%w+%S+%s"
+        url = f"https://wttr.in/{self.location}?format=%C|%t|%w|%S|%s"
         try:
             response = requests.get(url)
             if response.status_code == 200:
                 response_text = response.text.replace("Partly ", "")
                 response_text = response_text.replace("Light ", "")
                 response_text = response_text.replace(" shower", "")
-                weather_info = response_text.split()
-                condition = weather_info[0].strip()
-                temperature = weather_info[1].strip().lstrip('+')
-                wind = weather_info[2].strip()
-                dawn = weather_info[-2].strip()
-                sunset = weather_info[-1].strip()
+                parts = response_text.split("|")
+                condition = parts[0].strip()
+                temperature = parts[1].strip().lstrip('+')
+                wind = parts[2].strip()
+                dawn = parts[-2].strip()
+                sunset = parts[-1].strip()
 
                 emoji = _pick_emoji(condition)
 
