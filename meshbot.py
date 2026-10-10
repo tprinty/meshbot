@@ -1057,10 +1057,54 @@ class MeshBot:
         header = f"🕸️ WeMo: {online}/{total} monitored online"
         self._send("\n".join([header] + lines), sender_id, wantAck=False)
 
+    def command_nodes(self, sender_id):
+        """List all visible mesh nodes. Always replies direct (DM)."""
+        logger.info("Nodes Command Received")
+        self.transmission_count += 1
+        # Force direct reply — never broadcast node list to the mesh.
+        self._reply_dest = sender_id
+
+        nodes = getattr(self.interface, "nodesByNum", None) or {}
+        if not nodes:
+            self._send("No nodes in table.", sender_id, wantAck=False)
+            return
+
+        now = int(time.time())
+        lines = []
+        for num, node in nodes.items():
+            # Skip our own node
+            if str(num) == str(self.mynode):
+                continue
+            user = node.get("user") or {}
+            name = (
+                user.get("shortName")
+                or user.get("longName")
+                or f"!{num:08x}"
+            )
+            last_heard = node.get("lastHeard")
+            age = self._fmt_age(now - last_heard if last_heard else None)
+            parts = [f"{name} — {age}"]
+            snr = node.get("snr")
+            if snr is not None:
+                parts.append(f"SNR {snr}")
+            batt = (node.get("deviceMetrics") or {}).get("batteryLevel")
+            if batt is not None:
+                parts.append(f"{batt}%")
+            lines.append("  ".join(parts))
+
+        if not lines:
+            self._send("No other nodes visible.", sender_id, wantAck=False)
+            return
+
+        header = f"🕸️ {len(lines)} node{'s' if len(lines) != 1 else ''}"
+        output = _fit_mesh("\n".join([header] + lines))
+        self._send(output, sender_id, wantAck=False)
+
+
     def command_help(self, interface, sender_id):
         logger.info("Help Command Received")
         self.transmission_count += 1
-        cmds = ["#help", "#test", "#tst-detail", "#weather", "#forecast", "#tides", "#flipcoin", "#random", "#moon", "#sun"]
+        cmds = ["#help", "#test", "#tst-detail", "#weather", "#forecast", "#tides", "#nodes", "#flipcoin", "#random", "#moon", "#sun"]
         if self.storm_alerts:
             cmds.append("#alerts")
         if self.repeaters:
@@ -1180,6 +1224,8 @@ class MeshBot:
                         except Exception:
                             info = "Forecast unavailable."
                     self._send(info, sender_id, wantAck=True)
+                elif "#nodes" in message:
+                    self.command_nodes(sender_id)
                 elif "#status" in message:
                     self.command_status(sender_id)
                 elif "#test" in message:
