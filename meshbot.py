@@ -737,51 +737,63 @@ class MeshBot:
             time.sleep(self.alerts_poll_interval)
 
     def _tropics_poller(self):
-        """Background thread: poll NHC RSS feed for new tropical storm
-        advisories and broadcast them as they appear.
+        """Background thread: poll NHC RSS feed for tropical storm
+        advisories and broadcast new ones to the mesh.
 
-        First poll seeds the "already sent" set so we don't spam on
-        restart. Each subsequent poll broadcasts only advisory titles
-        that have not been seen before.
+        Self-regulating: polls every 30 min when storms are active,
+        backs off to every 6 hours when the basin is quiet.
+        The daily tropics summary (TROPICS_DAILY_TIME) handles
+        routine updates during hurricane season — this poller is
+        only for active-threat rapid updates.
         """
-        self._sent_tropics_ids = set()
+        self._sent_tropics_summary_ids = set()
+        self._tropics_active = False
         first_run = True
 
         while True:
             try:
                 if self.tropical_weather is None:
-                    time.sleep(self.tropics_poll_interval)
+                    time.sleep(3600 * 6)
                     continue
 
                 items = self.tropical_weather.get_tropics_items()
                 if items is None:
                     logger.warning(
-                        "Tropics poller: NHC RSS returned error; "
+                        "Tropics poller: NHC RSS fetch failed; "
                         "will retry"
                     )
                     time.sleep(self.tropics_poll_interval)
                     continue
 
-                active_ids = {a["id"] for a in items}
+                # Only count active storms (ignore post-tropical,
+                # remnants, and dissipated systems)
+                has_storms = any(
+                    "Summary for" in a["title"]
+                    for a in items
+                )
 
-                if first_run:
-                    self._sent_tropics_ids = active_ids
-                    first_run = False
-                    logger.info(
-                        "Tropics poller: seeded %d active advisory(s)",
-                        len(active_ids),
-                    )
-                else:
-                    # Detect if a new Summary advisory appeared
-                    # (the Summary changes every advisory cycle)
-                    prev_summary_ids = getattr(
-                        self, '_sent_tropics_summary_ids', set()
-                    )
+                if has_storms:
                     curr_summary_ids = {
                         a["id"] for a in items
                         if "Summary" in a["title"]
                     }
-                    if curr_summary_ids - prev_summary_ids:
+
+                    if not self._tropics_active:
+                        logger.info(
+                            "Tropics poller: storm activity "
+                            "detected, switching to active mode "
+                            "(every %ds)",
+                            self.tropics_poll_interval,
+                        )
+                        self._tropics_active = True
+                        # Seed to avoid re-broadcasting existing
+                        self._sent_tropics_summary_ids = (
+                            curr_summary_ids
+                        )
+
+                    elif (curr_summary_ids -
+                          self._sent_tropics_summary_ids):
+                        # New advisory cycle
                         try:
                             msg = (
                                 self.tropical_weather
@@ -791,21 +803,37 @@ class MeshBot:
                                 self.interface.sendText(
                                     msg, wantAck=False
                                 )
-                                nbytes = len(msg.encode('utf-8'))
                                 logger.info(
                                     "Tropics broadcast sent "
-                                    "(%d bytes)", nbytes,
+                                    "(%d bytes)",
+                                    len(msg.encode('utf-8')),
                                 )
                         except Exception as e:
                             logger.error(
                                 "Failed tropics broadcast: %s", e
                             )
-                    self._sent_tropics_summary_ids = curr_summary_ids
+                        self._sent_tropics_summary_ids = (
+                            curr_summary_ids
+                        )
+
+                    # Active: check every poll interval
+                    sleep_time = self.tropics_poll_interval
+
+                else:
+                    if self._tropics_active:
+                        logger.info(
+                            "Tropics poller: no active storms, "
+                            "returning to standby (every 6h)"
+                        )
+                        self._tropics_active = False
+                    # Quiet: check every 6 hours
+                    sleep_time = 3600 * 6
 
             except Exception as e:
                 logger.error("Tropics poller loop error: %s", e)
+                sleep_time = self.tropics_poll_interval
 
-            time.sleep(self.tropics_poll_interval)
+            time.sleep(sleep_time)
 
     def _extract_alert_description(self, desc, max_chars=200):
         """Extract the first paragraph of a NWS alert description.
